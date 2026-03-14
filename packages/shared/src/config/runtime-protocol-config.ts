@@ -7,7 +7,51 @@ import type {
   SwapRouteConfig,
 } from "../types/domain";
 
-const ADDRESSES = {
+export type RuntimeAddressOverrides = Partial<{
+  uniswapRouterEthereum: string;
+  uniswapRouterBase: string;
+  aerodromeRouterBase: string;
+  aerodromeFactoryBase: string;
+  acrossSpokePoolEthereum: string;
+  acrossSpokePoolBase: string;
+  wrappedNativeEthereum: string;
+  wrappedNativeBase: string;
+  usdcEthereum: string;
+  usdcBase: string;
+  usdtEthereum: string;
+  usdtBase: string;
+}>;
+
+type RuntimeAddresses = {
+  uniswapRouter: {
+    ethereum: string;
+    base: string;
+  };
+  aerodromeRouter: {
+    base?: string;
+  };
+  aerodromeFactory: {
+    base?: string;
+  };
+  acrossSpokePool: {
+    ethereum: string;
+    base: string;
+  };
+  wrappedNative: {
+    ethereum: string;
+    base: string;
+  };
+  usdc: {
+    ethereum: string;
+    base: string;
+  };
+  usdt: {
+    ethereum?: string;
+    base?: string;
+  };
+};
+
+const DEFAULT_ADDRESSES: Record<RuntimeProfile, RuntimeAddresses> = {
   mainnet: {
     uniswapRouter: {
       ethereum: "0xE592427A0AEce92De3Edee1F18E0157C05861564",
@@ -57,14 +101,14 @@ const ADDRESSES = {
     },
     usdc: {
       ethereum: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
-      base: "0x036CbD53842c5426634e7929541eC2318f3dCF7",
+      base: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     },
     usdt: {
       ethereum: undefined,
       base: undefined,
     },
   },
-} as const;
+};
 
 const CHAIN_IDS: Record<RuntimeProfile, Record<ChainSlug, number>> = {
   mainnet: {
@@ -79,31 +123,147 @@ const CHAIN_IDS: Record<RuntimeProfile, Record<ChainSlug, number>> = {
 
 const DEFAULT_PROFILE: RuntimeProfile = "mainnet";
 const INTEGRATOR_ID_ENV_KEY = "VITE_ACROSS_INTEGRATOR_ID";
+const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 
 function isAddressLike(value: string | undefined): value is string {
-  return typeof value === "string" && /^0x[a-fA-F0-9]{40}$/.test(value);
+  return typeof value === "string" && ADDRESS_REGEX.test(value);
 }
 
-function getSupportedTokens(profile: RuntimeProfile): ProtocolTokenSupport[] {
+function resolveRequiredAddress(
+  override: string | undefined,
+  fallback: string,
+  fieldLabel: string,
+) {
+  const value = (override ?? fallback).trim();
+  if (!isAddressLike(value)) {
+    throw new Error(`Invalid address for ${fieldLabel}: ${value || "(empty)"}`);
+  }
+  return value.toLowerCase();
+}
+
+function resolveOptionalAddress(
+  override: string | undefined,
+  fallback: string | undefined,
+  fieldLabel: string,
+) {
+  const source = override ?? fallback;
+  if (!source) {
+    return undefined;
+  }
+  const value = source.trim();
+  if (!value) {
+    return undefined;
+  }
+  if (!isAddressLike(value)) {
+    throw new Error(`Invalid address for ${fieldLabel}: ${value}`);
+  }
+  return value.toLowerCase();
+}
+
+function resolveRuntimeAddresses(
+  profile: RuntimeProfile,
+  overrides: RuntimeAddressOverrides,
+): RuntimeAddresses {
+  const defaults = DEFAULT_ADDRESSES[profile];
+
+  return {
+    uniswapRouter: {
+      ethereum: resolveRequiredAddress(
+        overrides.uniswapRouterEthereum,
+        defaults.uniswapRouter.ethereum,
+        `${profile}.uniswapRouter.ethereum`,
+      ),
+      base: resolveRequiredAddress(
+        overrides.uniswapRouterBase,
+        defaults.uniswapRouter.base,
+        `${profile}.uniswapRouter.base`,
+      ),
+    },
+    aerodromeRouter: {
+      base: resolveOptionalAddress(
+        overrides.aerodromeRouterBase,
+        defaults.aerodromeRouter.base,
+        `${profile}.aerodromeRouter.base`,
+      ),
+    },
+    aerodromeFactory: {
+      base: resolveOptionalAddress(
+        overrides.aerodromeFactoryBase,
+        defaults.aerodromeFactory.base,
+        `${profile}.aerodromeFactory.base`,
+      ),
+    },
+    acrossSpokePool: {
+      ethereum: resolveRequiredAddress(
+        overrides.acrossSpokePoolEthereum,
+        defaults.acrossSpokePool.ethereum,
+        `${profile}.acrossSpokePool.ethereum`,
+      ),
+      base: resolveRequiredAddress(
+        overrides.acrossSpokePoolBase,
+        defaults.acrossSpokePool.base,
+        `${profile}.acrossSpokePool.base`,
+      ),
+    },
+    wrappedNative: {
+      ethereum: resolveRequiredAddress(
+        overrides.wrappedNativeEthereum,
+        defaults.wrappedNative.ethereum,
+        `${profile}.wrappedNative.ethereum`,
+      ),
+      base: resolveRequiredAddress(
+        overrides.wrappedNativeBase,
+        defaults.wrappedNative.base,
+        `${profile}.wrappedNative.base`,
+      ),
+    },
+    usdc: {
+      ethereum: resolveRequiredAddress(
+        overrides.usdcEthereum,
+        defaults.usdc.ethereum,
+        `${profile}.usdc.ethereum`,
+      ),
+      base: resolveRequiredAddress(
+        overrides.usdcBase,
+        defaults.usdc.base,
+        `${profile}.usdc.base`,
+      ),
+    },
+    usdt: {
+      ethereum: resolveOptionalAddress(
+        overrides.usdtEthereum,
+        defaults.usdt.ethereum,
+        `${profile}.usdt.ethereum`,
+      ),
+      base: resolveOptionalAddress(
+        overrides.usdtBase,
+        defaults.usdt.base,
+        `${profile}.usdt.base`,
+      ),
+    },
+  };
+}
+
+function getSupportedTokens(addresses: RuntimeAddresses): ProtocolTokenSupport[] {
   const supported: ProtocolTokenSupport[] = [
     { chain: "ethereum", address: "native", symbol: "ETH", decimals: 18 },
     { chain: "base", address: "native", symbol: "ETH", decimals: 18 },
     {
       chain: "ethereum",
-      address: ADDRESSES[profile].usdc.ethereum,
+      address: addresses.usdc.ethereum,
       symbol: "USDC",
       decimals: 6,
     },
     {
       chain: "base",
-      address: ADDRESSES[profile].usdc.base,
+      address: addresses.usdc.base,
       symbol: "USDC",
       decimals: 6,
     },
   ];
 
-  const ethereumUsdt = ADDRESSES[profile].usdt.ethereum;
-  const baseUsdt = ADDRESSES[profile].usdt.base;
+  const ethereumUsdt = addresses.usdt.ethereum;
+  const baseUsdt = addresses.usdt.base;
   if (isAddressLike(ethereumUsdt)) {
     supported.push({
       chain: "ethereum",
@@ -124,7 +284,10 @@ function getSupportedTokens(profile: RuntimeProfile): ProtocolTokenSupport[] {
   return supported;
 }
 
-function getSwapRoutes(profile: RuntimeProfile): SwapRouteConfig[] {
+function getSwapRoutes(
+  profile: RuntimeProfile,
+  addresses: RuntimeAddresses,
+): SwapRouteConfig[] {
   const routes: SwapRouteConfig[] = [
     {
       routeId: "swap-eth-usdc-ethereum",
@@ -132,9 +295,9 @@ function getSwapRoutes(profile: RuntimeProfile): SwapRouteConfig[] {
       chain: "ethereum",
       dex: "uniswap_v3",
       enabled: true,
-      routerAddress: ADDRESSES[profile].uniswapRouter.ethereum,
-      tokenIn: ADDRESSES[profile].wrappedNative.ethereum,
-      tokenOut: ADDRESSES[profile].usdc.ethereum,
+      routerAddress: addresses.uniswapRouter.ethereum,
+      tokenIn: addresses.wrappedNative.ethereum,
+      tokenOut: addresses.usdc.ethereum,
       feeTier: 500,
       supportsNativeIn: true,
       inputTokenDecimals: 18,
@@ -144,8 +307,19 @@ function getSwapRoutes(profile: RuntimeProfile): SwapRouteConfig[] {
   ];
 
   if (profile === "mainnet") {
-    const aerodromeRouter = ADDRESSES.mainnet.aerodromeRouter.base;
-    const aerodromeFactory = ADDRESSES.mainnet.aerodromeFactory.base;
+    const aerodromeRouter = addresses.aerodromeRouter.base;
+    const aerodromeFactory = addresses.aerodromeFactory.base;
+    const baseUsdt = addresses.usdt.base;
+    const ethereumUsdt = addresses.usdt.ethereum;
+    if (!aerodromeRouter) {
+      throw new Error("Mainnet swap config is missing aerodrome router address");
+    }
+    if (!aerodromeFactory) {
+      throw new Error("Mainnet swap config is missing aerodrome factory address");
+    }
+    if (!baseUsdt || !ethereumUsdt) {
+      throw new Error("Mainnet swap config is missing USDT token addresses");
+    }
     routes.push({
       routeId: "swap-eth-usdc-base",
       label: "ETH -> USDC (Base)",
@@ -153,8 +327,8 @@ function getSwapRoutes(profile: RuntimeProfile): SwapRouteConfig[] {
       dex: "aerodrome",
       enabled: true,
       routerAddress: aerodromeRouter,
-      tokenIn: ADDRESSES.mainnet.wrappedNative.base,
-      tokenOut: ADDRESSES.mainnet.usdc.base,
+      tokenIn: addresses.wrappedNative.base,
+      tokenOut: addresses.usdc.base,
       supportsNativeIn: true,
       aerodromeStable: false,
       aerodromeFactory,
@@ -169,8 +343,8 @@ function getSwapRoutes(profile: RuntimeProfile): SwapRouteConfig[] {
       dex: "aerodrome",
       enabled: true,
       routerAddress: aerodromeRouter,
-      tokenIn: ADDRESSES.mainnet.usdc.base,
-      tokenOut: ADDRESSES.mainnet.usdt.base,
+      tokenIn: addresses.usdc.base,
+      tokenOut: baseUsdt,
       supportsNativeIn: false,
       aerodromeStable: true,
       aerodromeFactory,
@@ -184,9 +358,9 @@ function getSwapRoutes(profile: RuntimeProfile): SwapRouteConfig[] {
       chain: "ethereum",
       dex: "uniswap_v3",
       enabled: true,
-      routerAddress: ADDRESSES.mainnet.uniswapRouter.ethereum,
-      tokenIn: ADDRESSES.mainnet.usdc.ethereum,
-      tokenOut: ADDRESSES.mainnet.usdt.ethereum,
+      routerAddress: addresses.uniswapRouter.ethereum,
+      tokenIn: addresses.usdc.ethereum,
+      tokenOut: ethereumUsdt,
       feeTier: 100,
       supportsNativeIn: false,
       inputTokenDecimals: 6,
@@ -200,9 +374,9 @@ function getSwapRoutes(profile: RuntimeProfile): SwapRouteConfig[] {
       chain: "base",
       dex: "uniswap_v3",
       enabled: true,
-      routerAddress: ADDRESSES[profile].uniswapRouter.base,
-      tokenIn: ADDRESSES[profile].wrappedNative.base,
-      tokenOut: ADDRESSES[profile].usdc.base,
+      routerAddress: addresses.uniswapRouter.base,
+      tokenIn: addresses.wrappedNative.base,
+      tokenOut: addresses.usdc.base,
       feeTier: 500,
       supportsNativeIn: true,
       inputTokenDecimals: 18,
@@ -217,8 +391,9 @@ function getSwapRoutes(profile: RuntimeProfile): SwapRouteConfig[] {
 function getProtocolRegistry(
   profile: RuntimeProfile,
   swapRoutes: SwapRouteConfig[],
+  addresses: RuntimeAddresses,
 ): ProtocolRegistryEntry[] {
-  const supportedTokens = getSupportedTokens(profile);
+  const supportedTokens = getSupportedTokens(addresses);
 
   return [
     {
@@ -246,11 +421,11 @@ function getProtocolRegistry(
       },
       swapRoutes,
       contractAddresses: {
-        ethereum: ADDRESSES[profile].uniswapRouter.ethereum,
+        ethereum: addresses.uniswapRouter.ethereum,
         base:
           profile === "mainnet"
-            ? (ADDRESSES[profile].aerodromeRouter.base ?? ADDRESSES[profile].uniswapRouter.base)
-            : ADDRESSES[profile].uniswapRouter.base,
+            ? (addresses.aerodromeRouter.base ?? addresses.uniswapRouter.base)
+            : addresses.uniswapRouter.base,
       },
     },
     {
@@ -264,13 +439,13 @@ function getProtocolRegistry(
         { chain: "base", address: "native", symbol: "ETH", decimals: 18 },
         {
           chain: "ethereum",
-          address: ADDRESSES[profile].usdc.ethereum,
+          address: addresses.usdc.ethereum,
           symbol: "USDC",
           decimals: 6,
         },
         {
           chain: "base",
-          address: ADDRESSES[profile].usdc.base,
+          address: addresses.usdc.base,
           symbol: "USDC",
           decimals: 6,
         },
@@ -283,8 +458,8 @@ function getProtocolRegistry(
             : "https://app.across.to/api",
       },
       contractAddresses: {
-        ethereum: ADDRESSES[profile].acrossSpokePool.ethereum,
-        base: ADDRESSES[profile].acrossSpokePool.base,
+        ethereum: addresses.acrossSpokePool.ethereum,
+        base: addresses.acrossSpokePool.base,
       },
     },
   ];
@@ -299,9 +474,11 @@ export function resolveRuntimeProfile(profile?: string): RuntimeProfile {
 
 export function getRuntimeProtocolConfig(
   profileInput?: string,
+  addressOverrides: RuntimeAddressOverrides = {},
 ): RuntimeProtocolConfig {
   const profile = resolveRuntimeProfile(profileInput);
-  const swapRoutes = getSwapRoutes(profile);
+  const addresses = resolveRuntimeAddresses(profile, addressOverrides);
+  const swapRoutes = getSwapRoutes(profile, addresses);
 
   return {
     profile,
@@ -310,13 +487,13 @@ export function getRuntimeProtocolConfig(
         slug: "ethereum",
         chainId: CHAIN_IDS[profile].ethereum,
         label: profile === "testnet" ? "Sepolia" : "Ethereum",
-        wrappedNativeAddress: ADDRESSES[profile].wrappedNative.ethereum,
+        wrappedNativeAddress: addresses.wrappedNative.ethereum,
       },
       base: {
         slug: "base",
         chainId: CHAIN_IDS[profile].base,
         label: profile === "testnet" ? "Base Sepolia" : "Base",
-        wrappedNativeAddress: ADDRESSES[profile].wrappedNative.base,
+        wrappedNativeAddress: addresses.wrappedNative.base,
       },
     },
     swapRoutes,
@@ -328,26 +505,26 @@ export function getRuntimeProtocolConfig(
           : "https://app.across.to/api",
       integratorIdEnvKey: INTEGRATOR_ID_ENV_KEY,
       spokePoolAddresses: {
-        ethereum: ADDRESSES[profile].acrossSpokePool.ethereum,
-        base: ADDRESSES[profile].acrossSpokePool.base,
+        ethereum: addresses.acrossSpokePool.ethereum,
+        base: addresses.acrossSpokePool.base,
       },
       supportedAssets: [
         { chain: "ethereum", address: "native", symbol: "ETH", decimals: 18 },
         { chain: "base", address: "native", symbol: "ETH", decimals: 18 },
         {
           chain: "ethereum",
-          address: ADDRESSES[profile].usdc.ethereum,
+          address: addresses.usdc.ethereum,
           symbol: "USDC",
           decimals: 6,
         },
         {
           chain: "base",
-          address: ADDRESSES[profile].usdc.base,
+          address: addresses.usdc.base,
           symbol: "USDC",
           decimals: 6,
         },
       ],
     },
-    protocolRegistry: getProtocolRegistry(profile, swapRoutes),
+    protocolRegistry: getProtocolRegistry(profile, swapRoutes, addresses),
   };
 }

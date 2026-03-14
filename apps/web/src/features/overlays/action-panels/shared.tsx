@@ -312,10 +312,10 @@ export function InlineError({ message, details }: { message?: string; details?: 
   return (
     <div
       aria-live="polite"
-      className="mt-3 rounded-xl border border-rose-300/35 bg-rose-300/15 px-3 py-2 text-sm text-rose-100"
+      className="mt-3 max-w-full overflow-hidden rounded-xl border border-rose-300/35 bg-rose-300/15 px-3 py-2 text-sm text-rose-100"
       role="alert"
     >
-      <p className="font-medium text-pretty break-words">{message}</p>
+      <p className="font-medium text-pretty break-all">{message}</p>
       {details ? (
         <details className="mt-2">
           <summary className="cursor-pointer text-xs text-rose-100/80">

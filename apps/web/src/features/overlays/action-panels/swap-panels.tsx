@@ -17,9 +17,48 @@ import {
   SubmittedTx,
   formatDisplayAmount,
   fromAssetKey,
+  normalizeWalletInteractionError,
   refreshPortfolioAfterInteraction,
   shortHash,
 } from "./shared";
+
+type SwapErrorDisplay = {
+  message?: string;
+  details?: string;
+};
+
+function toSwapErrorDisplay(rawMessage?: string): SwapErrorDisplay {
+  if (!rawMessage) {
+    return {};
+  }
+
+  const compact = rawMessage.replace(/\s+/g, " ").trim();
+  const lowered = compact.toLowerCase();
+
+  if (lowered.includes("address") && lowered.includes("is invalid")) {
+    return {
+      message: "Swap failed due to invalid configured token/router address. Check protocol address env vars.",
+      details: rawMessage,
+    };
+  }
+  if (lowered.includes("err.details") && lowered.includes("tolowercase is not a function")) {
+    return {
+      message: "Wallet returned an invalid error payload. Please retry. If it persists, reconnect wallet.",
+      details: rawMessage,
+    };
+  }
+
+  if (compact.length > 220) {
+    return {
+      message: `${compact.slice(0, 220)}...`,
+      details: rawMessage,
+    };
+  }
+
+  return {
+    message: compact,
+  };
+}
 
 export function SwapSelectPanel() {
   const activeChain = useAppStore((state) => state.session.activeChain);
@@ -160,17 +199,8 @@ export function SwapPanel() {
   ]);
 
   useEffect(() => {
-    const defaultRoute = routes.find((route) => {
-      if (selectedSourceAddress === "native") {
-        return route.supportsNativeIn;
-      }
-      if (!selectedSourceAddress) {
-        return false;
-      }
-      return route.tokenIn.toLowerCase() === selectedSourceAddress.toLowerCase();
-    });
-    setTargetTokenAddress((value) => value || defaultRoute?.tokenOut || "");
-  }, [routes, selectedSourceAddress]);
+    setTargetTokenAddress("");
+  }, [activeChain, selectedSourceAddress]);
 
   const selectedRoute = useMemo(
     () => {
@@ -289,7 +319,9 @@ export function SwapPanel() {
     },
     onError: (error: Error) => {
       setInteractionStatus("idle");
-      toast.error(error.message);
+      const normalized = normalizeWalletInteractionError(error);
+      const display = toSwapErrorDisplay(normalized.message);
+      toast.error(display.message ?? "Swap failed");
     },
     onSuccess: (result) => {
       setSubmittedTx(result);
@@ -408,6 +440,14 @@ export function SwapPanel() {
     }
     return formatDisplayAmount(selectedMinion.balance, 3);
   }, [selectedMinion]);
+  const swapErrorDisplay = useMemo(
+    () =>
+      toSwapErrorDisplay(
+        swapMutation.error?.message ??
+        waitForSwapReceipt.error?.message,
+      ),
+    [swapMutation.error?.message, waitForSwapReceipt.error?.message],
+  );
 
   return (
     <section className="rounded-2xl border border-cyan-100/20 bg-[#08141c]/96 p-3 shadow-2xl backdrop-blur-xl sm:p-4">
@@ -500,10 +540,8 @@ export function SwapPanel() {
         </p>
       ) : null}
       <InlineError
-        message={
-          swapMutation.error?.message ??
-          waitForSwapReceipt.error?.message
-        }
+        details={swapErrorDisplay.details}
+        message={swapErrorDisplay.message}
       />
     </section>
   );

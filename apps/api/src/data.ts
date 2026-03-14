@@ -10,6 +10,7 @@ import {
   type ChainSlug,
   type PortfolioAsset,
   type ProtocolRegistryEntry,
+  type RuntimeAddressOverrides,
   type RuntimeProfile,
 } from "@chainatlas/shared";
 
@@ -32,11 +33,39 @@ const bridgeJobStorePath = path.resolve(
   process.env.BRIDGE_JOB_STORE_PATH ?? path.join(__dirname, "../data/bridge-jobs.json"),
 );
 
+function optionalAddressEnv(...keys: string[]) {
+  for (const key of keys) {
+    const value = process.env[key]?.trim();
+    if (value) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+const runtimeAddressOverrides: RuntimeAddressOverrides = {
+  uniswapRouterEthereum: optionalAddressEnv("UNISWAP_ROUTER_ETHEREUM", "VITE_UNISWAP_ROUTER_ETHEREUM"),
+  uniswapRouterBase: optionalAddressEnv("UNISWAP_ROUTER_BASE", "VITE_UNISWAP_ROUTER_BASE"),
+  aerodromeRouterBase: optionalAddressEnv("AERODROME_ROUTER_BASE", "VITE_AERODROME_ROUTER_BASE"),
+  aerodromeFactoryBase: optionalAddressEnv("AERODROME_FACTORY_BASE", "VITE_AERODROME_FACTORY_BASE"),
+  acrossSpokePoolEthereum: optionalAddressEnv(
+    "ACROSS_SPOKE_POOL_ETHEREUM",
+    "VITE_ACROSS_SPOKE_POOL_ETHEREUM",
+  ),
+  acrossSpokePoolBase: optionalAddressEnv("ACROSS_SPOKE_POOL_BASE", "VITE_ACROSS_SPOKE_POOL_BASE"),
+  wrappedNativeEthereum: optionalAddressEnv("WRAPPED_NATIVE_ETHEREUM", "VITE_WRAPPED_NATIVE_ETHEREUM"),
+  wrappedNativeBase: optionalAddressEnv("WRAPPED_NATIVE_BASE", "VITE_WRAPPED_NATIVE_BASE"),
+  usdcEthereum: optionalAddressEnv("USDC_ETHEREUM", "VITE_USDC_ETHEREUM"),
+  usdcBase: optionalAddressEnv("USDC_BASE", "VITE_USDC_BASE"),
+  usdtEthereum: optionalAddressEnv("USDT_ETHEREUM", "VITE_USDT_ETHEREUM"),
+  usdtBase: optionalAddressEnv("USDT_BASE", "VITE_USDT_BASE"),
+};
+
 const activeProfile = resolveRuntimeProfile(process.env.CRYPTO_WORLD_PROFILE);
-const runtimeConfig = getRuntimeProtocolConfig(activeProfile);
+const runtimeConfig = getRuntimeProtocolConfig(activeProfile, runtimeAddressOverrides);
 const runtimeConfigByProfile = {
-  testnet: getRuntimeProtocolConfig("testnet"),
-  mainnet: getRuntimeProtocolConfig("mainnet"),
+  testnet: getRuntimeProtocolConfig("testnet", runtimeAddressOverrides),
+  mainnet: getRuntimeProtocolConfig("mainnet", runtimeAddressOverrides),
 } as const;
 
 const alchemyDiscoveryNetworks = ["eth-mainnet", "base-mainnet", "eth-sepolia", "base-sepolia"] as const;
@@ -125,24 +154,26 @@ const nativeAssetMeta: Record<ChainSlug, Omit<PortfolioAsset, "balance" | "usdVa
   },
 };
 
-const tokenMetadata = new Map<string, Pick<PortfolioAsset, "name" | "symbol" | "decimals" | "verified">>([
-  [
-    "ethereum:0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".toLowerCase(),
-    { name: "USD Coin", symbol: "USDC", decimals: 6, verified: true },
-  ],
-  [
-    "base:0x833589fCD6EDB6E08f4c7C32D4f71b54bdA02913".toLowerCase(),
-    { name: "USD Coin", symbol: "USDC", decimals: 6, verified: true },
-  ],
-  [
-    "ethereum:0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238".toLowerCase(),
-    { name: "USD Coin", symbol: "USDC", decimals: 6, verified: true },
-  ],
-  [
-    "base:0x036CbD53842c5426634e7929541eC2318f3dCF7".toLowerCase(),
-    { name: "USD Coin", symbol: "USDC", decimals: 6, verified: true },
-  ],
-]);
+const tokenMetadata = new Map<string, Pick<PortfolioAsset, "name" | "symbol" | "decimals" | "verified">>();
+for (const profileConfig of Object.values(runtimeConfigByProfile)) {
+  for (const asset of profileConfig.bridge.supportedAssets) {
+    if (asset.address === "native") {
+      continue;
+    }
+    const key = `${asset.chain}:${asset.address}`.toLowerCase();
+    if (tokenMetadata.has(key)) {
+      continue;
+    }
+    const symbol = asset.symbol.toUpperCase();
+    const name = symbol === "USDC" ? "USD Coin" : symbol === "USDT" ? "Tether USD" : asset.symbol;
+    tokenMetadata.set(key, {
+      name,
+      symbol: asset.symbol,
+      decimals: asset.decimals ?? 18,
+      verified: true,
+    });
+  }
+}
 
 function uniqueSupportedTokens(registry: ProtocolRegistryEntry[]) {
   const map = new Map<string, { chain: ChainSlug; address: string | "native"; symbol: string }>();

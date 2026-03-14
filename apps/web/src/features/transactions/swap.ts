@@ -1,5 +1,4 @@
-import { parseAbi, parseUnits } from "viem";
-import { writeContract } from "viem/actions";
+import { encodeFunctionData, getAddress, parseAbi, parseUnits } from "viem";
 import type { ProtocolRegistryEntry, TransactionIntent } from "@chainatlas/shared";
 import {
   createChainPublicClient,
@@ -84,7 +83,60 @@ const ERC20_ALLOWANCE_ABI = parseAbi([
   "function approve(address spender, uint256 amount) returns (bool)",
 ]);
 
+function toRpcHexQuantity(value: bigint) {
+  return `0x${value.toString(16)}`;
+}
+
+function isMalformedErrorPayload(error: unknown) {
+  const raw = error instanceof Error ? error.message : String(error);
+  const message = raw.toLowerCase();
+  return (
+    (message.includes("err.details") && message.includes("tolowercase is not a function")) ||
+    (message.includes("details is not a function") && message.includes("tolowercase"))
+  );
+}
+
+async function trySimulate<T>(simulation: Promise<T>) {
+  try {
+    await simulation;
+  } catch (error) {
+    if (!isMalformedErrorPayload(error)) {
+      throw error;
+    }
+  }
+}
+
+async function sendRawWalletTransaction(input: {
+  wallet: ConnectedPrivyWallet;
+  from: `0x${string}`;
+  to: `0x${string}`;
+  data: `0x${string}`;
+  value?: bigint;
+}) {
+  const provider = await input.wallet.getEthereumProvider();
+  const tx: Record<string, string> = {
+    from: input.from,
+    to: input.to,
+    data: input.data,
+  };
+  if (typeof input.value === "bigint" && input.value > 0n) {
+    tx.value = toRpcHexQuantity(input.value);
+  }
+
+  const hash = await provider.request({
+    method: "eth_sendTransaction",
+    params: [tx],
+  });
+
+  if (typeof hash !== "string" || !hash.startsWith("0x")) {
+    throw new Error("Wallet returned an invalid transaction hash.");
+  }
+
+  return hash as `0x${string}`;
+}
+
 async function ensureTokenAllowance(input: {
+  wallet: ConnectedPrivyWallet;
   tokenAddress: `0x${string}`;
   owner: `0x${string}`;
   spender: `0x${string}`;
@@ -92,6 +144,11 @@ async function ensureTokenAllowance(input: {
   publicClient: ReturnType<typeof createChainPublicClient>;
   walletClient: Awaited<ReturnType<typeof createPrivyWalletClient>>;
 }) {
+  const account = input.walletClient.account;
+  if (!account) {
+    throw new Error("Privy wallet account is unavailable");
+  }
+
   const allowance = await input.publicClient.readContract({
     address: input.tokenAddress,
     abi: ERC20_ALLOWANCE_ABI,
@@ -102,14 +159,27 @@ async function ensureTokenAllowance(input: {
     return;
   }
 
-  const approval = await input.publicClient.simulateContract({
-    account: input.walletClient.account,
-    address: input.tokenAddress,
+  const approvalArgs = [input.spender, input.amount] as const;
+  await trySimulate(
+    input.publicClient.simulateContract({
+      account,
+      address: input.tokenAddress,
+      abi: ERC20_ALLOWANCE_ABI,
+      functionName: "approve",
+      args: approvalArgs,
+    }),
+  );
+  const approvalData = encodeFunctionData({
     abi: ERC20_ALLOWANCE_ABI,
     functionName: "approve",
-    args: [input.spender, input.amount],
+    args: approvalArgs,
   });
-  const approvalHash = await writeContract(input.walletClient, approval.request);
+  const approvalHash = await sendRawWalletTransaction({
+    wallet: input.wallet,
+    from: account.address,
+    to: input.tokenAddress,
+    data: approvalData,
+  });
   await input.publicClient.waitForTransactionReceipt({ hash: approvalHash });
 }
 
@@ -130,20 +200,25 @@ export async function executeSwap(
 
   const publicClient = createChainPublicClient(input.chain);
   const walletClient = await createPrivyWalletClient(input.wallet, input.chain);
-  if (!walletClient.account) {
+  const account = walletClient.account;
+  if (!account) {
     throw new Error("Privy wallet account is unavailable");
   }
   const amountIn = parseUnits(input.amount, route.inputTokenDecimals);
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 60 * 10);
+  const tokenInAddress = getAddress(route.tokenIn as `0x${string}`);
+  const tokenOutAddress = getAddress(route.tokenOut as `0x${string}`);
+  const routerAddress = getAddress(route.routerAddress as `0x${string}`);
   const isNativeInput =
     route.supportsNativeIn && (input.assetAddress === "native" || !input.assetAddress);
   const value = isNativeInput ? amountIn : 0n;
 
   if (!isNativeInput) {
     await ensureTokenAllowance({
-      tokenAddress: route.tokenIn as `0x${string}`,
-      owner: walletClient.account.address,
-      spender: route.routerAddress as `0x${string}`,
+      wallet: input.wallet,
+      tokenAddress: tokenInAddress,
+      owner: account.address,
+      spender: routerAddress,
       amount: amountIn,
       publicClient,
       walletClient,
@@ -156,58 +231,99 @@ export async function executeSwap(
     }
     const path = [
       {
-        from: route.tokenIn as `0x${string}`,
-        to: route.tokenOut as `0x${string}`,
+        from: tokenInAddress,
+        to: tokenOutAddress,
         stable: Boolean(route.aerodromeStable),
-        factory: route.aerodromeFactory as `0x${string}`,
+        factory: getAddress(route.aerodromeFactory as `0x${string}`),
       },
     ] as const;
 
     if (isNativeInput) {
-      const request = await publicClient.simulateContract({
-        account: walletClient.account,
-        address: route.routerAddress as `0x${string}`,
+      const nativeSwapArgs = [0n, path, account.address, deadline] as const;
+      await trySimulate(
+        publicClient.simulateContract({
+          account,
+          address: routerAddress,
+          abi: AERODROME_ROUTER_ABI,
+          functionName: "swapExactETHForTokens",
+          args: nativeSwapArgs,
+          value,
+        }),
+      );
+      const data = encodeFunctionData({
         abi: AERODROME_ROUTER_ABI,
         functionName: "swapExactETHForTokens",
-        args: [0n, path, walletClient.account.address, deadline],
+        args: nativeSwapArgs,
+      });
+      return await sendRawWalletTransaction({
+        wallet: input.wallet,
+        from: account.address,
+        to: routerAddress,
+        data,
         value,
       });
-      return writeContract(walletClient, request.request);
     }
 
-    const request = await publicClient.simulateContract({
-      account: walletClient.account,
-      address: route.routerAddress as `0x${string}`,
+    const tokenSwapArgs = [amountIn, 0n, path, account.address, deadline] as const;
+    await trySimulate(
+      publicClient.simulateContract({
+        account,
+        address: routerAddress,
+        abi: AERODROME_ROUTER_ABI,
+        functionName: "swapExactTokensForTokens",
+        args: tokenSwapArgs,
+      }),
+    );
+    const data = encodeFunctionData({
       abi: AERODROME_ROUTER_ABI,
       functionName: "swapExactTokensForTokens",
-      args: [amountIn, 0n, path, walletClient.account.address, deadline],
+      args: tokenSwapArgs,
     });
-    return writeContract(walletClient, request.request);
+    return await sendRawWalletTransaction({
+      wallet: input.wallet,
+      from: account.address,
+      to: routerAddress,
+      data,
+    });
   }
 
   if (typeof route.feeTier !== "number") {
     throw new Error("Uniswap V3 route is missing a fee tier");
   }
 
-  const request = await publicClient.simulateContract({
-    account: walletClient.account,
-    address: route.routerAddress as `0x${string}`,
+  const exactInputSingleArgs = [
+    {
+      tokenIn: tokenInAddress,
+      tokenOut: tokenOutAddress,
+      fee: route.feeTier,
+      recipient: account.address,
+      deadline,
+      amountIn,
+      amountOutMinimum: 0n,
+      sqrtPriceLimitX96: 0n,
+    },
+  ] as const;
+
+  await trySimulate(
+    publicClient.simulateContract({
+      account,
+      address: routerAddress,
+      abi: UNISWAP_SWAP_ROUTER_ABI,
+      functionName: "exactInputSingle",
+      args: exactInputSingleArgs,
+      value,
+    }),
+  );
+  const data = encodeFunctionData({
     abi: UNISWAP_SWAP_ROUTER_ABI,
     functionName: "exactInputSingle",
-    args: [
-      {
-        tokenIn: route.tokenIn as `0x${string}`,
-        tokenOut: route.tokenOut as `0x${string}`,
-        fee: route.feeTier,
-        recipient: walletClient.account.address,
-        deadline,
-        amountIn,
-        amountOutMinimum: 0n,
-        sqrtPriceLimitX96: 0n,
-      },
-    ],
+    args: exactInputSingleArgs,
+  });
+  return await sendRawWalletTransaction({
+    wallet: input.wallet,
+    from: account.address,
+    to: routerAddress,
+    data,
     value,
   });
-
-  return writeContract(walletClient, request.request);
 }
