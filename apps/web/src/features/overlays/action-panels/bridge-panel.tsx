@@ -10,7 +10,8 @@ import { getBridgeRegistryEntry } from "@/lib/protocol-registry";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useWaitForTransactionReceipt } from "wagmi";
 import {
   ActionButton,
@@ -283,6 +284,18 @@ export function BridgePanel() {
       (asset) => toAssetKey(asset.chain, asset.address) === selectedMinion.assetKey,
     );
   }, [bridgeableAssets, selectedMinion]);
+  const pendingAcrossJobs = useMemo(
+    () =>
+      jobs.filter(
+        (job) =>
+          job.protocol === "across" &&
+          ["submitted", "settling", "quote_ready"].includes(job.status) &&
+          Boolean(job.originChainId) &&
+          Boolean(job.depositId),
+      ),
+    [jobs],
+  );
+  const observedStatusesRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     if (!chainMinions.length) {
@@ -315,6 +328,35 @@ export function BridgePanel() {
       }
     },
   });
+
+  useQuery({
+    enabled: Boolean(address) && pendingAcrossJobs.length > 0,
+    queryKey: [
+      "bridge-jobs-status-sync",
+      address,
+      pendingAcrossJobs.map((job) => `${job.id}:${job.status}:${job.updatedAt}`).join("|"),
+    ],
+    queryFn: async () => {
+      await Promise.allSettled(pendingAcrossJobs.map((job) => resumeBridge(job)));
+      const refreshedJobs = await fetchBridgeJobs(address!);
+      setPendingJobs(refreshedJobs);
+      return refreshedJobs;
+    },
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: true,
+  });
+
+  useEffect(() => {
+    const nextStatuses = new Map<string, string>();
+    for (const job of jobs) {
+      const previousStatus = observedStatusesRef.current.get(job.id);
+      if (previousStatus && previousStatus !== "completed" && job.status === "completed") {
+        toast.success(`Bridge to ${chainLabel(job.destinationChain)} completed`);
+      }
+      nextStatuses.set(job.id, job.status);
+    }
+    observedStatusesRef.current = nextStatuses;
+  }, [jobs]);
 
   const startMutation = useMutation({
     mutationFn: async () => {
