@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "noEmit": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "types": ["vite/client"],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@cryptoworld/shared": ["../../packages/shared/src/index.ts"],
+      "@cryptoworld/shared/*": ["../../packages/shared/src/*"]
+    }
+  },
+  "include": ["src"]
+}

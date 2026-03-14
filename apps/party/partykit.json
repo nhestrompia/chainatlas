@@ -1,0 +1,4 @@
+{
+  "name": "cryptoworld",
+  "main": "src/server.ts"
+}

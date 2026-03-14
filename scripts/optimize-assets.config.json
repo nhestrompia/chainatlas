@@ -1,0 +1,34 @@
+{
+  "defaults": {
+    "textureSize": 1024,
+    "simplify": 0.5,
+    "targetFormat": "webp",
+    "skip": false
+  },
+  "rules": [
+    {
+      "match": "plane",
+      "skip": true
+    },
+    {
+      "match": "character",
+      "textureSize": 1024,
+      "simplify": 0.6
+    },
+    {
+      "match": "minion",
+      "textureSize": 512,
+      "simplify": 0.4
+    },
+    {
+      "match": "building",
+      "textureSize": 512,
+      "simplify": 0.35
+    },
+    {
+      "match": "props",
+      "textureSize": 512,
+      "simplify": 0.4
+    }
+  ]
+}

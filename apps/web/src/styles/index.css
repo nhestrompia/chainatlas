@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  font-family: "IBM Plex Sans", "Avenir Next", sans-serif;
+  --cw-bg: #08161e;
+  --cw-surface: #101d25;
+  --cw-surface-soft: #162b36;
+  --cw-text: #edf6fb;
+  --cw-muted: #a6c3d4;
+  background: var(--cw-bg);
+  color: var(--cw-text);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100dvh;
+  background: var(--cw-bg);
+  color: var(--cw-text);
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+.text-pretty {
+  text-wrap: pretty;
+}
