@@ -67,6 +67,11 @@ export const minionSummarySchema = z.object({
   visibleSymbols: z.array(z.string()),
 });
 
+export const presenceMinionSchema = z.object({
+  name: z.string(),
+  amount: z.string(),
+});
+
 export const avatarIdSchema = z.enum(["navigator", "warden", "sprinter", "mystic"]);
 
 export const presenceSnapshotSchema = z.object({
@@ -79,7 +84,9 @@ export const presenceSnapshotSchema = z.object({
   chain: chainSlugSchema,
   interactionStatus: z.enum(["idle", "exploring", "sending", "swapping", "bridging"]),
   minionSummary: minionSummarySchema,
-  minions: z.array(tokenMinionSchema).optional(),
+  minions: z.array(presenceMinionSchema).optional(),
+  shoutText: z.string().max(100).optional(),
+  shoutExpiresAt: z.number().int().positive().optional(),
   updatedAt: z.number().int().nonnegative(),
 });
 
@@ -155,12 +162,15 @@ export const swapRouteConfigSchema = z.object({
   routeId: z.string(),
   label: z.string(),
   chain: chainSlugSchema,
+  dex: z.enum(["uniswap_v3", "aerodrome"]),
   enabled: z.boolean(),
   routerAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   tokenIn: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   tokenOut: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-  feeTier: z.number().int().positive(),
+  feeTier: z.number().int().positive().optional(),
   supportsNativeIn: z.boolean(),
+  aerodromeStable: z.boolean().optional(),
+  aerodromeFactory: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
   inputTokenDecimals: z.number().int().nonnegative(),
   outputTokenDecimals: z.number().int().nonnegative(),
   defaultSlippageBps: z.number().int().nonnegative(),

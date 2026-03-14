@@ -1,6 +1,6 @@
-# CryptoWorld
+# ChainAtlas
 
-Monorepo for the CryptoWorld MVP:
+Monorepo for the ChainAtlas MVP:
 
 - `apps/web`: Vite + React + Three.js frontend
 - `apps/party`: PartyKit multiplayer presence server

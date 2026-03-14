@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 let dataModule: typeof import("./data");
 
 beforeEach(async () => {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "cryptoworld-api-"));
+  const dir = await mkdtemp(path.join(os.tmpdir(), "chainatlas-api-"));
   process.env.BRIDGE_JOB_STORE_PATH = path.join(dir, "bridge-jobs.json");
   vi.resetModules();
   dataModule = await import("./data");

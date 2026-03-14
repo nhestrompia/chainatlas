@@ -1,4 +1,4 @@
-import type { PortfolioAsset, TokenMinion } from "@cryptoworld/shared";
+import type { PortfolioAsset, TokenMinion } from "@chainatlas/shared";
 
 function assetKey(asset: PortfolioAsset) {
   return `${asset.chain}:${asset.address}`.toLowerCase();

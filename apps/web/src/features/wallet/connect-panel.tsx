@@ -10,11 +10,11 @@ function shortenAddress(address?: string) {
     return "Not connected";
   }
 
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  return `${address.slice(0, 4)}...${address.slice(-4)}`;
 }
 
 export function ConnectPanel({ compact = false }: { compact?: boolean }) {
-  const { connectWallet, linkWallet } = usePrivy();
+  const { connectOrCreateWallet, linkWallet } = usePrivy();
   const { address, authenticated, walletConnected, disconnect, ready } =
     usePrivySession();
   const setWallet = useAppStore((state) => state.setWallet);
@@ -34,7 +34,7 @@ export function ConnectPanel({ compact = false }: { compact?: boolean }) {
         Wallet Gateway
       </p>
       <h1 className="mt-2 text-3xl font-semibold text-balance">
-        CryptoWorld Islands
+        ChainAtlas Islands
       </h1>
       <p className="mt-2 text-sm text-cyan-100/75 text-pretty">
         Connect an Ethereum wallet to walk the Ethereum and Base islands, cross
@@ -102,7 +102,7 @@ export function ConnectPanel({ compact = false }: { compact?: boolean }) {
                 linkWallet();
                 return;
               }
-              connectWallet();
+              connectOrCreateWallet();
             }}
             type="button"
           >

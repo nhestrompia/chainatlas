@@ -1,4 +1,4 @@
-import type { BridgeJob, PortfolioAsset, ProtocolRegistryEntry } from "@cryptoworld/shared";
+import type { BridgeJob, PortfolioAsset, ProtocolRegistryEntry } from "@chainatlas/shared";
 import { env } from "../config/env";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

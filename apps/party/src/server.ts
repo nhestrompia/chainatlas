@@ -2,17 +2,23 @@ import type * as Party from "partykit/server";
 import {
   clientMessageSchema,
   type InteractionStatus,
+  type PresenceMinion,
   type PresenceSnapshot,
   type ServerMessage,
-  type TokenMinion,
-} from "@cryptoworld/shared";
+} from "@chainatlas/shared";
 
 type PresenceConnectionState = {
   snapshot: PresenceSnapshot;
   lastUpdateAt: number;
+  lastShoutAt?: number;
 };
 
 const THROTTLE_MS = 50;
+const MAX_VISIBLE_SYMBOLS_IN_STATE = 12;
+const SHOUT_MAX_CHARS = 80;
+const SHOUT_COOLDOWN_MS = 3_000;
+const SHOUT_MIN_DURATION_MS = 3_000;
+const SHOUT_MAX_DURATION_MS = 6_000;
 const BOUNDS = {
   minX: -64,
   maxX: 64,
@@ -28,16 +34,47 @@ function serialize(message: ServerMessage) {
   return JSON.stringify(message);
 }
 
-function cloneMinions(snapshot: { minions?: ReadonlyArray<TokenMinion> }) {
+function cloneMinions(snapshot: { minions?: ReadonlyArray<PresenceMinion> }) {
   return snapshot.minions?.map((minion) => ({ ...minion }));
 }
 
-export default class CryptoWorldRoom implements Party.Server {
+function normalizeShoutText(value: unknown) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return undefined;
+  }
+  return normalized.slice(0, SHOUT_MAX_CHARS);
+}
+
+function toConnectionSnapshot(snapshot: PresenceSnapshot, now = Date.now()): PresenceSnapshot {
+  const hasActiveShout =
+    typeof snapshot.shoutText === "string" &&
+    typeof snapshot.shoutExpiresAt === "number" &&
+    snapshot.shoutExpiresAt > now;
+  return {
+    ...snapshot,
+    minionSummary: {
+      ...snapshot.minionSummary,
+      visibleSymbols: snapshot.minionSummary.visibleSymbols.slice(0, MAX_VISIBLE_SYMBOLS_IN_STATE),
+    },
+    // Keep websocket attachment small. Full minions stay in storage/in-memory map.
+    minions: undefined,
+    shoutText: hasActiveShout ? snapshot.shoutText : undefined,
+    shoutExpiresAt: hasActiveShout ? snapshot.shoutExpiresAt : undefined,
+  };
+}
+
+export default class ChainAtlasRoom implements Party.Server {
   options: Party.ServerOptions = { hibernate: true };
+  private readonly liveMinionsByConnectionId = new Map<string, PresenceMinion[]>();
 
   constructor(readonly party: Party.Party) {}
 
   onConnect(connection: Party.Connection<PresenceConnectionState>) {
+    const now = Date.now();
     const connections = [...this.party.getConnections<PresenceConnectionState>()].flatMap((item) =>
       item.state
         ? [
@@ -49,7 +86,21 @@ export default class CryptoWorldRoom implements Party.Server {
                   ...item.state.snapshot.minionSummary,
                   visibleSymbols: [...item.state.snapshot.minionSummary.visibleSymbols],
                 },
-                minions: cloneMinions(item.state.snapshot),
+                minions: cloneMinions({
+                  minions: this.liveMinionsByConnectionId.get(item.id),
+                }),
+                shoutText:
+                  item.state.snapshot.shoutText &&
+                  item.state.snapshot.shoutExpiresAt &&
+                  item.state.snapshot.shoutExpiresAt > now
+                    ? item.state.snapshot.shoutText
+                    : undefined,
+                shoutExpiresAt:
+                  item.state.snapshot.shoutText &&
+                  item.state.snapshot.shoutExpiresAt &&
+                  item.state.snapshot.shoutExpiresAt > now
+                    ? item.state.snapshot.shoutExpiresAt
+                    : undefined,
               },
             },
           ]
@@ -99,14 +150,57 @@ export default class CryptoWorldRoom implements Party.Server {
     if (message.type === "presence:init" || message.type === "presence:update") {
       const now = Date.now();
       const previous = sender.state;
+      const previousMinions = this.liveMinionsByConnectionId.get(sender.id);
+      const previousShoutActive =
+        previous?.snapshot.shoutText &&
+        previous.snapshot.shoutExpiresAt &&
+        previous.snapshot.shoutExpiresAt > now
+          ? {
+              text: previous.snapshot.shoutText,
+              expiresAt: previous.snapshot.shoutExpiresAt,
+            }
+          : undefined;
 
       if (message.type === "presence:update" && previous && now - previous.lastUpdateAt < THROTTLE_MS) {
         return;
       }
 
+      const minions = message.payload.minions ?? previousMinions;
+      if (minions) {
+        this.liveMinionsByConnectionId.set(sender.id, cloneMinions({ minions }) ?? []);
+      }
+
+      const requestedShoutText = normalizeShoutText(message.payload.shoutText);
+      const requestedShoutExpiresAt = message.payload.shoutExpiresAt;
+      let shoutText = previousShoutActive?.text;
+      let shoutExpiresAt = previousShoutActive?.expiresAt;
+      let lastShoutAt = previous?.lastShoutAt;
+
+      if (requestedShoutText) {
+        const canShout =
+          !previous?.lastShoutAt || now - previous.lastShoutAt >= SHOUT_COOLDOWN_MS;
+        if (canShout) {
+          const requestedDurationMs =
+            typeof requestedShoutExpiresAt === "number" &&
+            Number.isFinite(requestedShoutExpiresAt)
+              ? requestedShoutExpiresAt - now
+              : 4_000;
+          const clampedDurationMs = clamp(
+            requestedDurationMs,
+            SHOUT_MIN_DURATION_MS,
+            SHOUT_MAX_DURATION_MS,
+          );
+          shoutText = requestedShoutText;
+          shoutExpiresAt = now + clampedDurationMs;
+          lastShoutAt = now;
+        }
+      }
+
       const snapshot: PresenceSnapshot = {
         ...message.payload,
-        minions: message.payload.minions ?? previous?.snapshot.minions,
+        minions,
+        shoutText,
+        shoutExpiresAt,
         position: {
           x: clamp(message.payload.position.x, BOUNDS.minX, BOUNDS.maxX),
           y: message.payload.position.y,
@@ -114,14 +208,12 @@ export default class CryptoWorldRoom implements Party.Server {
         },
         updatedAt: now,
       };
+      const connectionSnapshot = toConnectionSnapshot(snapshot, now);
       const broadcastSnapshot: PresenceSnapshot = message.payload.minions
         ? snapshot
-        : {
-            ...snapshot,
-            minions: undefined,
-          };
+        : connectionSnapshot;
 
-      sender.setState({ snapshot, lastUpdateAt: now });
+      sender.setState({ snapshot: connectionSnapshot, lastUpdateAt: now, lastShoutAt });
       this.party.storage.put(`presence:${sender.id}`, snapshot);
 
       this.party.broadcast(
@@ -151,11 +243,17 @@ export default class CryptoWorldRoom implements Party.Server {
           ...state.snapshot.minionSummary,
           visibleSymbols: [...state.snapshot.minionSummary.visibleSymbols],
         },
-        minions: cloneMinions(state.snapshot),
+        minions: cloneMinions({
+          minions: this.liveMinionsByConnectionId.get(sender.id),
+        }),
         updatedAt: Date.now(),
       };
 
-      sender.setState({ snapshot, lastUpdateAt: Date.now() });
+      sender.setState({
+        snapshot: toConnectionSnapshot(snapshot),
+        lastUpdateAt: Date.now(),
+        lastShoutAt: state.lastShoutAt,
+      });
       this.party.storage.put(`presence:${sender.id}`, snapshot);
       this.party.broadcast(
         serialize({
@@ -181,6 +279,7 @@ export default class CryptoWorldRoom implements Party.Server {
   private handleLeave(sender: Party.Connection<PresenceConnectionState>) {
     const state = sender.state;
     sender.setState(null);
+    this.liveMinionsByConnectionId.delete(sender.id);
     this.party.storage.delete(`presence:${sender.id}`);
 
     if (!state) {

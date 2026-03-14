@@ -16,8 +16,8 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@cryptoworld/shared": ["packages/shared/src/index.ts"],
-      "@cryptoworld/shared/*": ["packages/shared/src/*"]
+      "@chainatlas/shared": ["packages/shared/src/index.ts"],
+      "@chainatlas/shared/*": ["packages/shared/src/*"]
     }
   }
 }

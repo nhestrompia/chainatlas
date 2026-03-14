@@ -1,5 +1,5 @@
 import { encodeFunctionData, parseEther, parseUnits } from "viem";
-import type { TransactionIntent } from "@cryptoworld/shared";
+import type { TransactionIntent } from "@chainatlas/shared";
 import { type ConnectedPrivyWallet } from "@/features/wallet/use-privy-wallet";
 
 const ERC20_ABI = [

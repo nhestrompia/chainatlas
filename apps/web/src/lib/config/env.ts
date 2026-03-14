@@ -1,7 +1,7 @@
 export const env = {
   privyAppId: import.meta.env.VITE_PRIVY_APP_ID ?? "",
   privyClientId: import.meta.env.VITE_PRIVY_CLIENT_ID ?? "",
-  profile: import.meta.env.VITE_CRYPTO_WORLD_PROFILE ?? "testnet",
+  profile: import.meta.env.VITE_CRYPTO_WORLD_PROFILE ?? "mainnet",
   acrossIntegratorId: import.meta.env.VITE_ACROSS_INTEGRATOR_ID ?? "0x0000",
   apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000",
   partyHost: import.meta.env.VITE_PARTYKIT_HOST ?? "localhost:1999",

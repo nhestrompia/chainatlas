@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import type { BridgeJob, TransactionIntent } from "@cryptoworld/shared";
+import type { BridgeJob, TransactionIntent } from "@chainatlas/shared";
 import { formatUnits, parseUnits } from "viem";
 import { createBridgeJob, patchBridgeJob } from "@/lib/api/client";
 import {

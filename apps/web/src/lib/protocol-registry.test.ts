@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getRuntimeProtocolConfig } from "@cryptoworld/shared";
+import { getRuntimeProtocolConfig } from "@chainatlas/shared";
 import { getSwapRoutesForChain, resolveSwapRoute } from "./protocol-registry";
 
 describe("protocol registry helpers", () => {

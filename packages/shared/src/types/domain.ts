@@ -98,6 +98,11 @@ export interface MinionSummary {
   visibleSymbols: string[];
 }
 
+export interface PresenceMinion {
+  name: string;
+  amount: string;
+}
+
 export interface PresenceSnapshot {
   address: string;
   roomId: WorldRoomId;
@@ -108,7 +113,9 @@ export interface PresenceSnapshot {
   chain: ChainSlug;
   interactionStatus: InteractionStatus;
   minionSummary: MinionSummary;
-  minions?: TokenMinion[];
+  minions?: PresenceMinion[];
+  shoutText?: string;
+  shoutExpiresAt?: number;
   updatedAt: number;
 }
 
@@ -165,12 +172,15 @@ export interface SwapRouteConfig {
   routeId: string;
   label: string;
   chain: ChainSlug;
+  dex: "uniswap_v3" | "aerodrome";
   enabled: boolean;
   routerAddress: string;
   tokenIn: string;
   tokenOut: string;
-  feeTier: number;
+  feeTier?: number;
   supportsNativeIn: boolean;
+  aerodromeStable?: boolean;
+  aerodromeFactory?: string;
   inputTokenDecimals: number;
   outputTokenDecimals: number;
   defaultSlippageBps: number;
@@ -252,12 +262,21 @@ export interface MinionSlice {
 }
 
 export interface OverlaySlice {
-  activeOverlay?: "inventory" | "swap" | "bridge" | "send" | "jobs";
+  activeOverlay?:
+    | "inventory"
+    | "swap"
+    | "bridge"
+    | "send"
+    | "jobs"
+    | "chat"
+    | "player";
   nearbyTarget?: string;
   swapSelectedAssetKey?: string;
   swapStep?: "select" | "details";
   sendSelectedAssetKey?: string;
   sendStep?: "select" | "details";
+  bridgeSelectedAssetKey?: string;
+  bridgeStep?: "select" | "details";
 }
 
 export interface PendingTransactionsSlice {

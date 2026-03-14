@@ -5,7 +5,7 @@ import {
   bridgeJobSchema,
   portfolioAssetSchema,
   protocolRegistryEntrySchema,
-} from "@cryptoworld/shared";
+} from "@chainatlas/shared";
 import { listBridgeJobs, listPortfolio, listProtocolRegistry, updateBridgeJob, upsertBridgeJob } from "./data";
 
 const app = Fastify({ logger: true });
@@ -34,13 +34,13 @@ app.get("/bridge-jobs/:address", async (request, reply) => {
 });
 
 app.post("/bridge-jobs", async (request, reply) => {
-  const payload = bridgeJobSchema.parse(request.body) as import("@cryptoworld/shared").BridgeJob;
+  const payload = bridgeJobSchema.parse(request.body) as import("@chainatlas/shared").BridgeJob;
   return reply.code(201).send(await upsertBridgeJob(payload));
 });
 
 app.patch("/bridge-jobs/:id", async (request, reply) => {
   const params = request.params as { id: string };
-  const body = bridgeJobPatchSchema.parse(request.body) as Partial<import("@cryptoworld/shared").BridgeJob>;
+  const body = bridgeJobPatchSchema.parse(request.body) as Partial<import("@chainatlas/shared").BridgeJob>;
   const job = await updateBridgeJob(params.id, body);
 
   if (!job) {
@@ -55,7 +55,7 @@ const port = Number(process.env.PORT ?? 4000);
 app
   .listen({ port, host: "0.0.0.0" })
   .then(() => {
-    app.log.info(`CryptoWorld API listening on ${port}`);
+    app.log.info(`ChainAtlas API listening on ${port}`);
   })
   .catch((error) => {
     app.log.error(error);

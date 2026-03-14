@@ -1,5 +1,5 @@
 {
-  "name": "cryptoworld",
+  "name": "chainatlas",
   "private": true,
   "version": "0.1.0",
   "workspaces": [
@@ -7,9 +7,9 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:web": "npm run dev -w @cryptoworld/web",
-    "dev:api": "npm run dev -w @cryptoworld/api",
-    "dev:party": "npm run dev -w @cryptoworld/party",
+    "dev:web": "npm run dev -w @chainatlas/web",
+    "dev:api": "npm run dev -w @chainatlas/api",
+    "dev:party": "npm run dev -w @chainatlas/party",
     "optimize:assets": "node scripts/optimize-3d-assets.mjs --input ./apps/assets --output ./apps/assets-optimized --config ./scripts/optimize-assets.config.json",
     "optimize:assets:dry": "node scripts/optimize-3d-assets.mjs --input ./apps/assets --output ./apps/assets-optimized --config ./scripts/optimize-assets.config.json --dry-run",
     "optimize:avatars": "./scripts/optimize-avatar-previews.sh",

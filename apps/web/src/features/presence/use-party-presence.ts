@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import usePartySocket from "partysocket/react";
-import { serverMessageSchema, type PresenceSnapshot } from "@cryptoworld/shared";
+import { serverMessageSchema, type PresenceSnapshot } from "@chainatlas/shared";
 import { env } from "@/lib/config/env";
 import { useAppStore } from "@/lib/store/app-store";
 

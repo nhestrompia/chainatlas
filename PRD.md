@@ -1,10 +1,10 @@
 ⸻
 
-CryptoWorld — Product Requirements Document (PRD)
+ChainAtlas — Product Requirements Document (PRD)
 
 1. Overview
 
-CryptoWorld is a spatial interface for interacting with blockchains. Instead of navigating wallets and protocol dashboards through menus, users explore a 3D world where blockchains, bridges, and DeFi protocols exist as physical locations.
+ChainAtlas is a spatial interface for interacting with blockchains. Instead of navigating wallets and protocol dashboards through menus, users explore a 3D world where blockchains, bridges, and DeFi protocols exist as physical locations.
 
 Users control an avatar that moves through this world. On-chain actions occur through spatial interactions:
 • Walking into a swap building opens a swap interface.
@@ -51,7 +51,7 @@ Goal: discoverability and branding inside the world.
 
 4. Core Concept
 
-CryptoWorld translates blockchain infrastructure into physical metaphors.
+ChainAtlas translates blockchain infrastructure into physical metaphors.
 
 Blockchain Concept Spatial Representation
 Blockchain Island / City
@@ -359,8 +359,8 @@ NFTs becoming playable avatars.
 
 Summary
 
-CryptoWorld transforms blockchain infrastructure into a spatial environment where users explore networks, visualize assets, and interact with protocols through movement.
+ChainAtlas transforms blockchain infrastructure into a spatial environment where users explore networks, visualize assets, and interact with protocols through movement.
 
-By turning abstract crypto mechanics into visible interactions, CryptoWorld aims to make decentralized systems more intuitive, social, and discoverable.
+By turning abstract crypto mechanics into visible interactions, ChainAtlas aims to make decentralized systems more intuitive, social, and discoverable.
 
 ⸻

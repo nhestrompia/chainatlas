@@ -1,7 +1,12 @@
-import { createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from "@tanstack/react-router";
-import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
-import { Suspense, lazy } from "react";
 import { HomeRoute } from "@/routes/home";
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from "@tanstack/react-router";
+import { lazy, Suspense } from "react";
 
 const LazyWorldRoute = lazy(() =>
   import("@/routes/world").then((module) => ({ default: module.WorldRoute })),
@@ -19,9 +24,9 @@ function RootLayout() {
   return (
     <>
       <Outlet />
-      {import.meta.env.DEV ? (
+      {/* {import.meta.env.DEV ? (
         <TanStackRouterDevtools position="bottom-right" />
-      ) : null}
+      ) : null} */}
     </>
   );
 }

@@ -11,7 +11,7 @@ import {
   type PortfolioAsset,
   type ProtocolRegistryEntry,
   type RuntimeProfile,
-} from "@cryptoworld/shared";
+} from "@chainatlas/shared";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

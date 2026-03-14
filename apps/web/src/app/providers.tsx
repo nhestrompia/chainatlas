@@ -9,7 +9,8 @@ import { Toaster } from "sonner";
 import { base, baseSepolia, mainnet, sepolia } from "viem/chains";
 
 const queryClient = new QueryClient();
-const privySupportedChains = runtimeProfile === "testnet" ? [sepolia, baseSepolia] : [mainnet, base];
+const privySupportedChains =
+  runtimeProfile === "testnet" ? [sepolia, baseSepolia] : [mainnet, base];
 const privyDefaultChain = privySupportedChains[0];
 
 export function AppProviders({ children }: { children: ReactNode }) {
@@ -33,7 +34,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <WagmiProvider config={wagmiConfig}>
           {children}
-          <Toaster position="top-right" richColors theme="dark" />
+          <Toaster position="top-center" richColors theme="dark" />
         </WagmiProvider>
       </QueryClientProvider>
     </PrivyProvider>

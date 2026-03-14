@@ -1,8 +1,8 @@
 import type { WorldConfig } from "../types/domain";
 
 export const WORLD_CONFIG: WorldConfig = {
-  id: "cryptoworld-mvp",
-  label: "CryptoWorld",
+  id: "chainatlas-mvp",
+  label: "ChainAtlas",
   defaultRoomId: "ethereum:main",
   spawnPosition: { x: -58, y: 1.25, z: 0 },
   availableRooms: ["ethereum:main", "base:main"],

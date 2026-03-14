@@ -3,7 +3,7 @@ import {
   resolveRuntimeProfile,
   type ChainSlug,
   type RuntimeProtocolConfig,
-} from "@cryptoworld/shared";
+} from "@chainatlas/shared";
 import { env } from "@/lib/config/env";
 
 export const runtimeProfile = resolveRuntimeProfile(env.profile);

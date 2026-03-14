@@ -1,5 +1,5 @@
 {
-  "name": "@cryptoworld/party",
+  "name": "@chainatlas/party",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "lint": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@cryptoworld/shared": "*",
+    "@chainatlas/shared": "*",
     "partykit": "^0.0.115"
   },
   "devDependencies": {

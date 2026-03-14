@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { getRuntimeProtocolConfig, resolveRuntimeProfile } from "./runtime-protocol-config";
 
 describe("runtime protocol config", () => {
-  it("defaults to testnet profile", () => {
-    expect(resolveRuntimeProfile(undefined)).toBe("testnet");
-    expect(resolveRuntimeProfile("unknown")).toBe("testnet");
+  it("defaults to mainnet profile", () => {
+    expect(resolveRuntimeProfile(undefined)).toBe("mainnet");
+    expect(resolveRuntimeProfile("unknown")).toBe("mainnet");
   });
 
   it("returns profile-aware chain ids and routes", () => {
@@ -15,4 +15,3 @@ describe("runtime protocol config", () => {
     expect(config.swapRoutes.length).toBeGreaterThan(0);
   });
 });
-

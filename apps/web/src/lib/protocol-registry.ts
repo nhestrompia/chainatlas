@@ -1,4 +1,4 @@
-import type { ChainSlug, ProtocolRegistryEntry, SwapRouteConfig } from "@cryptoworld/shared";
+import type { ChainSlug, ProtocolRegistryEntry, SwapRouteConfig } from "@chainatlas/shared";
 
 export function getSwapRoutes(registry: ProtocolRegistryEntry[]) {
   return registry

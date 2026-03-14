@@ -1,1 +1,24 @@
-[]
+[
+  {
+    "id": "JjdN2la03pSmE28xzx5xp",
+    "protocol": "across",
+    "address": "0xC98B57a2eabbA59369744871446864708614300E",
+    "sourceChain": "base",
+    "destinationChain": "ethereum",
+    "originChainId": 84532,
+    "destinationChainId": 11155111,
+    "depositId": "1002664",
+    "assetAddress": "native",
+    "amount": "0.002",
+    "status": "submitted",
+    "txHash": "0x8c071c92c14b513ffe70e52c23363d5a367bfb231f3156a061026ec0d0843a1a",
+    "originTxHash": "0x8c071c92c14b513ffe70e52c23363d5a367bfb231f3156a061026ec0d0843a1a",
+    "quoteTimestamp": 1773480564,
+    "expectedFillSeconds": 10,
+    "lastSyncedAt": "2026-03-14T09:36:33.945Z",
+    "statusDetail": "Submitted through Across",
+    "createdAt": "2026-03-14T09:36:33.945Z",
+    "updatedAt": "2026-03-14T09:36:33.945Z",
+    "nextActionLabel": "Check Across status"
+  }
+]

@@ -1,5 +1,5 @@
 import { createAcrossClient } from "@across-protocol/app-sdk";
-import type { ChainSlug } from "@cryptoworld/shared";
+import type { ChainSlug } from "@chainatlas/shared";
 import { concat, encodeFunctionData, isAddress, isHex, padHex, parseAbi, parseUnits } from "viem";
 import { base, baseSepolia, mainnet, sepolia } from "viem/chains";
 import {
@@ -88,6 +88,29 @@ function getErrorMessage(error: unknown) {
     }
   }
   return String(error);
+}
+
+function extractRpcUrl(message: string) {
+  const match = message.match(/URL:\s*(https?:\/\/[^\s]+)/i);
+  return match?.[1];
+}
+
+function normalizeRpcFailureMessage(message: string, sourceChain: ChainSlug) {
+  const lowered = message.toLowerCase();
+  const isRpcFailure =
+    lowered.includes("http request failed") ||
+    lowered.includes("failed to fetch") ||
+    lowered.includes("network request failed");
+
+  if (!isRpcFailure) {
+    return undefined;
+  }
+
+  const rpcUrl = extractRpcUrl(message);
+  const envKey = sourceChain === "ethereum" ? "VITE_ETHEREUM_RPC_URL" : "VITE_BASE_RPC_URL";
+  const endpoint = rpcUrl ? `RPC endpoint ${rpcUrl} is not reachable.` : "RPC endpoint is not reachable.";
+
+  return `${endpoint} Set ${envKey} to a reliable ${sourceChain} endpoint and retry bridge.`;
 }
 
 function bigintToHex(value: bigint) {
@@ -277,11 +300,15 @@ export async function executeAcrossBridge(
     });
   } catch (error) {
     const message = getErrorMessage(error);
+    const rpcFailureMessage = normalizeRpcFailureMessage(message, input.sourceChain);
     const shouldFallback =
       message.includes("toLowerCase is not a function") ||
       message.includes('contract function "deposit"') ||
       message.includes("does not match 'originChainId'");
     if (!shouldFallback) {
+      if (rpcFailureMessage) {
+        throw new Error(rpcFailureMessage);
+      }
       throw error;
     }
 
@@ -350,8 +377,12 @@ export async function executeAcrossBridge(
       }
     } catch (manualFallbackError) {
       const manualMessage = getErrorMessage(manualFallbackError);
-      if (manualMessage.toLowerCase().includes("failed to fetch")) {
-        throw new Error("Across bridge submission failed: network request failed.");
+      const rpcFailureDuringFallback = normalizeRpcFailureMessage(
+        manualMessage,
+        input.sourceChain,
+      );
+      if (rpcFailureDuringFallback) {
+        throw new Error(rpcFailureDuringFallback);
       }
       throw new Error(`Across bridge submission failed: ${manualMessage}`);
     }

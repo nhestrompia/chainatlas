@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { WORLD_CONFIG, type BridgeJob, type InteractionStatus, type OverlaySlice, type PortfolioAsset, type PresenceSnapshot, type SessionSlice, type TokenMinion, type WorldRoomId } from "@cryptoworld/shared";
+import { WORLD_CONFIG, type BridgeJob, type InteractionStatus, type OverlaySlice, type PortfolioAsset, type PresenceSnapshot, type SessionSlice, type TokenMinion, type WorldRoomId } from "@chainatlas/shared";
 
 type AppState = {
   session: SessionSlice;
@@ -29,9 +29,12 @@ type AppState = {
   setSwapStep(step: OverlaySlice["swapStep"]): void;
   setSendSelection(assetKey?: string): void;
   setSendStep(step: OverlaySlice["sendStep"]): void;
+  setBridgeSelection(assetKey?: string): void;
+  setBridgeStep(step: OverlaySlice["bridgeStep"]): void;
   setNearbyTarget(nearbyTarget?: string): void;
   setPresenceStatus(status: AppState["presence"]["status"]): void;
   setLocalPresence(snapshot: PresenceSnapshot): void;
+  setLocalShout(text?: string, expiresAt?: number): void;
   clearLocalPresence(): void;
   hydrateRemotePresence(remote: Record<string, PresenceSnapshot>): void;
   clearRemotePresence(): void;
@@ -110,6 +113,16 @@ export const useAppStore = create<AppState>((set) => ({
               ? state.overlays.sendStep ?? "select"
               : "select"
             : undefined,
+        bridgeSelectedAssetKey:
+          activeOverlay === "bridge"
+            ? state.overlays.bridgeSelectedAssetKey
+            : undefined,
+        bridgeStep:
+          activeOverlay === "bridge"
+            ? state.overlays.activeOverlay === "bridge"
+              ? state.overlays.bridgeStep ?? "select"
+              : "select"
+            : undefined,
       },
     }));
   },
@@ -145,8 +158,31 @@ export const useAppStore = create<AppState>((set) => ({
       },
     }));
   },
+  setBridgeSelection(assetKey) {
+    set((state) => ({
+      overlays: {
+        ...state.overlays,
+        bridgeSelectedAssetKey: assetKey,
+      },
+    }));
+  },
+  setBridgeStep(step) {
+    set((state) => ({
+      overlays: {
+        ...state.overlays,
+        bridgeStep: step,
+      },
+    }));
+  },
   setNearbyTarget(nearbyTarget) {
     set((state) => {
+      if (
+        state.overlays.activeOverlay === "chat" ||
+        state.overlays.activeOverlay === "player" ||
+        state.overlays.activeOverlay === "send"
+      ) {
+        return state;
+      }
       if (state.overlays.nearbyTarget === nearbyTarget) {
         return state;
       }
@@ -178,6 +214,38 @@ export const useAppStore = create<AppState>((set) => ({
         local: snapshot,
       },
     }));
+  },
+  setLocalShout(text, expiresAt) {
+    set((state) => {
+      if (!state.presence.local) {
+        return state;
+      }
+      const normalizedText = typeof text === "string" ? text.trim() : "";
+      if (!normalizedText || typeof expiresAt !== "number" || expiresAt <= Date.now()) {
+        return {
+          presence: {
+            ...state.presence,
+            local: {
+              ...state.presence.local,
+              shoutText: undefined,
+              shoutExpiresAt: undefined,
+              updatedAt: Date.now(),
+            },
+          },
+        };
+      }
+      return {
+        presence: {
+          ...state.presence,
+          local: {
+            ...state.presence.local,
+            shoutText: normalizedText,
+            shoutExpiresAt: expiresAt,
+            updatedAt: Date.now(),
+          },
+        },
+      };
+    });
   },
   clearLocalPresence() {
     set((state) => ({
