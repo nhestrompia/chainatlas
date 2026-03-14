@@ -1,5 +1,6 @@
 import type { BridgeJob, PortfolioAsset, ProtocolRegistryEntry } from "@chainatlas/shared";
 import { env } from "../config/env";
+import { browserBridgeJobStore } from "../storage/bridge-job-store";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${env.apiBaseUrl}${path}`, {
@@ -22,7 +23,7 @@ export function fetchProtocolRegistry() {
 }
 
 export function fetchBridgeJobs(address: string) {
-  return request<BridgeJob[]>(`/bridge-jobs/${address}`);
+  return browserBridgeJobStore.getJobs(address);
 }
 
 export function fetchPortfolio(address: string) {
@@ -30,15 +31,9 @@ export function fetchPortfolio(address: string) {
 }
 
 export function createBridgeJob(job: BridgeJob) {
-  return request<BridgeJob>("/bridge-jobs", {
-    method: "POST",
-    body: JSON.stringify(job),
-  });
+  return browserBridgeJobStore.upsertJob(job);
 }
 
 export function patchBridgeJob(id: string, patch: Partial<BridgeJob>) {
-  return request<BridgeJob>(`/bridge-jobs/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(patch),
-  });
+  return browserBridgeJobStore.patchJob(id, patch);
 }

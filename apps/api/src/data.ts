@@ -1,4 +1,3 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPublicClient, erc20Abi, formatUnits, getAddress, http } from "viem";
@@ -6,7 +5,6 @@ import { base, baseSepolia, mainnet, sepolia } from "viem/chains";
 import {
   getRuntimeProtocolConfig,
   resolveRuntimeProfile,
-  type BridgeJob,
   type ChainSlug,
   type PortfolioAsset,
   type ProtocolRegistryEntry,
@@ -27,11 +25,6 @@ for (const envPath of [
     // Tests and deployed environments can still provide variables via process.env.
   }
 }
-
-const bridgeJobStorePath = path.resolve(
-  process.cwd(),
-  process.env.BRIDGE_JOB_STORE_PATH ?? path.join(__dirname, "../data/bridge-jobs.json"),
-);
 
 function optionalAddressEnv(...keys: string[]) {
   for (const key of keys) {
@@ -435,28 +428,6 @@ async function listAlchemyTokenAssets(
   return dedupeAssets(assets);
 }
 
-async function ensureBridgeJobStore() {
-  await mkdir(path.dirname(bridgeJobStorePath), { recursive: true });
-
-  try {
-    await readFile(bridgeJobStorePath, "utf8");
-  } catch {
-    await writeFile(bridgeJobStorePath, "[]", "utf8");
-  }
-}
-
-async function readBridgeJobs(): Promise<BridgeJob[]> {
-  await ensureBridgeJobStore();
-  const raw = await readFile(bridgeJobStorePath, "utf8");
-  const parsed = JSON.parse(raw) as BridgeJob[];
-  return Array.isArray(parsed) ? parsed : [];
-}
-
-async function writeBridgeJobs(jobs: BridgeJob[]) {
-  await ensureBridgeJobStore();
-  await writeFile(bridgeJobStorePath, JSON.stringify(jobs, null, 2), "utf8");
-}
-
 async function readNativeAsset(
   chain: ChainSlug,
   address: string,
@@ -576,40 +547,4 @@ export async function listPortfolio(address: string): Promise<PortfolioAsset[]> 
 
 export function listProtocolRegistry() {
   return runtimeConfig.protocolRegistry;
-}
-
-export async function listBridgeJobs(address: string): Promise<BridgeJob[]> {
-  const jobs = await readBridgeJobs();
-  return jobs.filter((job) => job.address.toLowerCase() === address.toLowerCase());
-}
-
-export async function upsertBridgeJob(job: BridgeJob): Promise<BridgeJob> {
-  const jobs = await readBridgeJobs();
-  const index = jobs.findIndex((item) => item.id === job.id);
-
-  if (index >= 0) {
-    jobs[index] = job;
-  } else {
-    jobs.unshift(job);
-  }
-
-  await writeBridgeJobs(jobs);
-  return job;
-}
-
-export async function updateBridgeJob(
-  id: string,
-  patch: Partial<BridgeJob>,
-): Promise<BridgeJob | undefined> {
-  const jobs = await readBridgeJobs();
-  const match = jobs.find((job) => job.id === id);
-
-  if (!match) {
-    return undefined;
-  }
-
-  Object.assign(match, patch);
-  match.updatedAt = new Date().toISOString();
-  await writeBridgeJobs(jobs);
-  return match;
 }
