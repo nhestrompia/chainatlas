@@ -1,0 +1,7 @@
+name = "chainatlas-api"
+main = "src/worker.ts"
+compatibility_date = "2026-03-14"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+CRYPTO_WORLD_PROFILE = "mainnet"

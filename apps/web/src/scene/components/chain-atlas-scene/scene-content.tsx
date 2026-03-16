@@ -28,6 +28,7 @@ import {
 import { shortestAngleDelta } from "./movement";
 import { Avatar } from "./avatar-controller";
 import { RemoteAvatar } from "./avatar-primitives";
+import { LiveMarketBoard3D } from "./live-market-board";
 import { WaterPlane, WorldProps, ZonePads } from "./world-props";
 
 export function SceneContent({
@@ -265,6 +266,7 @@ export function SceneContent({
       <pointLight color="#9ad5f8" intensity={1} position={[52, 12, 0]} />
       <Sky sunPosition={[120, 18, 100]} />
       <WaterPlane />
+      <LiveMarketBoard3D />
       <Suspense fallback={null}>
         <WorldProps
           bridgeGateOpen={bridgeGateOpen}

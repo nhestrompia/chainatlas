@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "partykit dev src/server.ts --port 1999",
     "build": "tsc -p tsconfig.json",
+    "deploy": "partykit deploy",
     "test": "vitest run",
     "lint": "tsc --noEmit -p tsconfig.json"
   },
