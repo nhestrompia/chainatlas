@@ -9,4 +9,5 @@ export {
   BridgeSelectPanel,
   BridgePanel,
   JobsPanel,
+  MerchantPanel,
 } from "./action-panels/index";

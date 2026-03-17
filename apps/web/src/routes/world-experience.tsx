@@ -7,7 +7,7 @@ import {
   resolveEnsName,
   usePrivyWallet,
 } from "@/features/wallet/use-privy-wallet";
-import { fetchBridgeJobs, fetchPortfolio } from "@/lib/api/client";
+import { fetchBridgeJobs, fetchOpenSeaListings, fetchPortfolio } from "@/lib/api/client";
 import { runtimeConfig } from "@/lib/config/runtime";
 import { deriveMinions } from "@/lib/minions";
 import { useAppStore } from "@/lib/store/app-store";
@@ -17,7 +17,7 @@ import {
   type PortfolioAsset,
 } from "@chainatlas/shared";
 import { useQuery } from "@tanstack/react-query";
-import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import {
   erc20Abi,
   formatUnits,
@@ -68,9 +68,18 @@ export function WorldExperience() {
   const clearLocalPresence = useAppStore((state) => state.clearLocalPresence);
   const localPresence = useAppStore((state) => state.presence.local);
   const remotePresence = useAppStore((state) => state.presence.remote);
+  const merchantShops = useAppStore((state) => state.merchants.shops);
   const activeChain = useAppStore((state) => state.session.activeChain);
+  const currentRoomId = useAppStore((state) => state.session.currentRoomId);
   const setNearbyTarget = useAppStore((state) => state.setNearbyTarget);
   const nearbyTarget = useAppStore((state) => state.overlays.nearbyTarget);
+  const setNearbyMerchantSeller = useAppStore((state) => state.setNearbyMerchantSeller);
+  const nearbyMerchantSeller = useAppStore((state) => state.overlays.nearbyMerchantSeller);
+  const ownMerchantShop = useMemo(
+    () => (address ? merchantShops[address.toLowerCase()] : undefined),
+    [address, merchantShops],
+  );
+  const externalSyncKeysRef = useRef<Set<string>>(new Set());
 
   const ensNameQuery = useQuery({
     enabled: Boolean(address),
@@ -360,6 +369,70 @@ export function WorldExperience() {
   }, [localPresence, nearbyTarget, remotePresence, setNearbyTarget]);
 
   useEffect(() => {
+    if (!localPresence) {
+      setNearbyMerchantSeller(undefined);
+      return;
+    }
+
+    const localAddress = localPresence.address.toLowerCase();
+    const maxDistanceSq = 14 * 14;
+    const switchBias = 0.82;
+    const normalizedCurrentSeller = nearbyMerchantSeller?.toLowerCase();
+    let nearestSeller: string | undefined;
+    let nearestDistanceSq = Number.POSITIVE_INFINITY;
+    let currentDistanceSq = Number.POSITIVE_INFINITY;
+    for (const shop of Object.values(merchantShops)) {
+      const seller = shop.seller.toLowerCase();
+      if (seller === localAddress || shop.roomId !== currentRoomId || shop.chain !== activeChain) {
+        continue;
+      }
+      const sourcePosition =
+        shop.mode === "mobile"
+          ? Object.values(remotePresence).find(
+              (presence) => presence.address.toLowerCase() === seller,
+            )?.position
+          : shop.anchor;
+      if (!sourcePosition) {
+        continue;
+      }
+      const dx = sourcePosition.x - localPresence.position.x;
+      const dz = sourcePosition.z - localPresence.position.z;
+      const distanceSq = dx * dx + dz * dz;
+      if (seller === normalizedCurrentSeller) {
+        currentDistanceSq = distanceSq;
+      }
+      if (distanceSq < nearestDistanceSq) {
+        nearestDistanceSq = distanceSq;
+        nearestSeller = shop.seller;
+      }
+    }
+
+    if (!nearestSeller || nearestDistanceSq > maxDistanceSq) {
+      setNearbyMerchantSeller(undefined);
+      return;
+    }
+    if (
+      nearbyMerchantSeller &&
+      currentDistanceSq <= maxDistanceSq &&
+      nearestSeller.toLowerCase() !== normalizedCurrentSeller &&
+      nearestDistanceSq >= currentDistanceSq * switchBias
+    ) {
+      setNearbyMerchantSeller(nearbyMerchantSeller);
+      return;
+    }
+
+    setNearbyMerchantSeller(nearestSeller);
+  }, [
+    activeChain,
+    currentRoomId,
+    localPresence,
+    merchantShops,
+    nearbyMerchantSeller,
+    remotePresence,
+    setNearbyMerchantSeller,
+  ]);
+
+  useEffect(() => {
     if (!walletConnected || !authenticated || typeof window === "undefined") {
       setSelectedAvatar(undefined);
       return;
@@ -423,7 +496,71 @@ export function WorldExperience() {
     }
   };
 
-  usePartyPresence();
+  const partySocket = usePartyPresence();
+
+  useEffect(() => {
+    if (
+      !partySocket ||
+      partySocket.readyState !== 1 ||
+      !walletConnected ||
+      !authenticated ||
+      !address
+    ) {
+      return;
+    }
+    const syncKey = `${address.toLowerCase()}:${activeChain}:${currentRoomId}`;
+    if (externalSyncKeysRef.current.has(syncKey)) {
+      return;
+    }
+
+    let cancelled = false;
+    const syncListingsOnce = async () => {
+      externalSyncKeysRef.current.add(syncKey);
+      try {
+        const result = await fetchOpenSeaListings(address, activeChain, 20);
+        if (cancelled) {
+          return;
+        }
+        partySocket.send(
+          JSON.stringify({
+            type: "merchant:sync-external",
+            payload: {
+              shop: {
+                seller: address,
+                chain: activeChain,
+                roomId: currentRoomId,
+                mode: ownMerchantShop?.mode ?? "clone",
+                anchor:
+                  ownMerchantShop?.anchor ?? {
+                    x: activeChain === "ethereum" ? -58 : 58,
+                    y: 1.2,
+                    z: 0,
+                  },
+                updatedAt: Date.now(),
+                listings: result.listings,
+              },
+            },
+          }),
+        );
+      } catch {
+        // Keep UI live even if OpenSea throttles.
+      }
+    };
+
+    void syncListingsOnce();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeChain,
+    address,
+    authenticated,
+    currentRoomId,
+    ownMerchantShop?.anchor,
+    ownMerchantShop?.mode,
+    partySocket,
+    walletConnected,
+  ]);
 
   return (
     <main className="relative h-dvh overflow-hidden bg-[#08161e]">

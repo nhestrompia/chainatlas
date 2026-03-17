@@ -81,6 +81,16 @@ export const Avatar = memo(function Avatar({
   const setRoom = useAppStore((state) => state.setRoom);
   const activeOverlay = useAppStore((state) => state.overlays.activeOverlay);
   const nearbyTarget = useAppStore((state) => state.overlays.nearbyTarget);
+  const nearbyMerchantSeller = useAppStore(
+    (state) => state.overlays.nearbyMerchantSeller,
+  );
+  const nearbyMerchantListingCount = useAppStore((state) => {
+    const seller = state.overlays.nearbyMerchantSeller?.toLowerCase();
+    if (!seller) {
+      return 0;
+    }
+    return state.merchants.shops[seller]?.listings.length ?? 0;
+  });
   const nearbyTargetLabel = useAppStore((state) => {
     const target = state.overlays.nearbyTarget?.toLowerCase();
     if (!target) {
@@ -412,6 +422,11 @@ export const Avatar = memo(function Avatar({
         setOverlay(zoneOverlay);
         return;
       }
+      if (nearbyMerchantSeller) {
+        event.preventDefault();
+        setOverlay("merchant", nearbyMerchantSeller);
+        return;
+      }
       if (!nearbyTarget) {
         return;
       }
@@ -423,7 +438,7 @@ export const Avatar = memo(function Avatar({
     return () => {
       window.removeEventListener("keydown", onInteract);
     };
-  }, [nearbyTarget, requestBridgeGateUnlock, setOverlay]);
+  }, [nearbyMerchantSeller, nearbyTarget, requestBridgeGateUnlock, setOverlay]);
 
   useEffect(() => {
     if (!avatarRef.current || hasSpawnedRef.current) {
@@ -763,6 +778,27 @@ export const Avatar = memo(function Avatar({
       ) : null}
       {!isNearBridgeGate &&
       !currentZoneOverlay &&
+      nearbyMerchantSeller &&
+      labelsVisible ? (
+        <Html position={[0, 4.2, 0]} center>
+          <div className="pointer-events-none border border-amber-200/35 bg-black/60 px-2 py-1 text-white shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
+            <div className="flex items-center gap-2">
+              <span className="border border-amber-200/45 bg-amber-200/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none">
+                E
+              </span>
+              <span className="text-[10px] uppercase text-amber-100/90">
+                Merchant
+              </span>
+            </div>
+            <p className="mt-0.5 text-[12px] font-medium leading-tight whitespace-nowrap">
+              SHOP OPEN · {nearbyMerchantListingCount} listings
+            </p>
+          </div>
+        </Html>
+      ) : null}
+      {!isNearBridgeGate &&
+      !currentZoneOverlay &&
+      !nearbyMerchantSeller &&
       nearbyTarget &&
       labelsVisible ? (
         <Html position={[0, 4.2, 0]} center>

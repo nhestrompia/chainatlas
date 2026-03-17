@@ -29,6 +29,7 @@ import { shortestAngleDelta } from "./movement";
 import { Avatar } from "./avatar-controller";
 import { RemoteAvatar } from "./avatar-primitives";
 import { LiveMarketBoard3D } from "./live-market-board";
+import { MerchantShops } from "./merchant-shops";
 import { WaterPlane, WorldProps, ZonePads } from "./world-props";
 
 export function SceneContent({
@@ -302,6 +303,7 @@ export function SceneContent({
             snapshot={snapshot}
           />
         ))}
+        <MerchantShops labelsVisible={labelsVisible} />
       </Suspense>
       <ZonePads
         hiddenZoneId={activeZoneId}

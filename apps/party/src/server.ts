@@ -2,6 +2,8 @@ import type * as Party from "partykit/server";
 import {
   clientMessageSchema,
   type InteractionStatus,
+  type MerchantListing,
+  type MerchantShop,
   type PresenceMinion,
   type PresenceSnapshot,
   type ServerMessage,
@@ -19,6 +21,9 @@ const SHOUT_MAX_CHARS = 80;
 const SHOUT_COOLDOWN_MS = 3_000;
 const SHOUT_MIN_DURATION_MS = 3_000;
 const SHOUT_MAX_DURATION_MS = 6_000;
+const MERCHANT_INDEX_STORAGE_KEY = "merchant:index";
+const MERCHANT_STORAGE_PREFIX = "merchant:shop:";
+const MERCHANT_LISTING_LIMIT = 5;
 const BOUNDS = {
   minX: -64,
   maxX: 64,
@@ -49,6 +54,42 @@ function normalizeShoutText(value: unknown) {
   return normalized.slice(0, SHOUT_MAX_CHARS);
 }
 
+function listingDedupKey(listing: MerchantListing) {
+  const orderHash = listing.orderHash?.toLowerCase();
+  if (orderHash) {
+    return `order:${orderHash}`;
+  }
+  return `listing:${listing.listingId.toLowerCase()}`;
+}
+
+function isListingActive(listing: MerchantListing, now = Date.now()) {
+  if (listing.status !== "active") {
+    return false;
+  }
+  if (typeof listing.expiry === "number" && listing.expiry <= now) {
+    return false;
+  }
+  return true;
+}
+
+function clampListings(listings: MerchantListing[], now = Date.now()) {
+  const deduped = new Map<string, MerchantListing>();
+  for (const listing of listings) {
+    if (!isListingActive(listing, now)) {
+      continue;
+    }
+    deduped.set(listingDedupKey(listing), listing);
+  }
+  return [...deduped.values()]
+    .sort((a, b) => {
+      if (b.updatedAt !== a.updatedAt) {
+        return b.updatedAt - a.updatedAt;
+      }
+      return a.listingId.localeCompare(b.listingId);
+    })
+    .slice(0, MERCHANT_LISTING_LIMIT);
+}
+
 function toConnectionSnapshot(snapshot: PresenceSnapshot, now = Date.now()): PresenceSnapshot {
   const hasActiveShout =
     typeof snapshot.shoutText === "string" &&
@@ -70,10 +111,13 @@ function toConnectionSnapshot(snapshot: PresenceSnapshot, now = Date.now()): Pre
 export default class ChainAtlasRoom implements Party.Server {
   options: Party.ServerOptions = { hibernate: true };
   private readonly liveMinionsByConnectionId = new Map<string, PresenceMinion[]>();
+  private readonly merchantShopsBySeller = new Map<string, MerchantShop>();
+  private merchantsLoadPromise?: Promise<void>;
 
   constructor(readonly party: Party.Party) {}
 
-  onConnect(connection: Party.Connection<PresenceConnectionState>) {
+  async onConnect(connection: Party.Connection<PresenceConnectionState>) {
+    await this.ensureMerchantsLoaded();
     const now = Date.now();
     const connections = [...this.party.getConnections<PresenceConnectionState>()].flatMap((item) =>
       item.state
@@ -113,12 +157,13 @@ export default class ChainAtlasRoom implements Party.Server {
         payload: {
           roomId: this.party.id,
           connections,
+          merchants: this.getSerializedMerchants(now),
         },
       }),
     );
   }
 
-  onMessage(rawMessage: string, sender: Party.Connection<PresenceConnectionState>) {
+  async onMessage(rawMessage: string, sender: Party.Connection<PresenceConnectionState>) {
     let payload: unknown;
 
     try {
@@ -146,6 +191,7 @@ export default class ChainAtlasRoom implements Party.Server {
     }
 
     const message = parsed.data;
+    await this.ensureMerchantsLoaded();
 
     if (message.type === "presence:init" || message.type === "presence:update") {
       const now = Date.now();
@@ -269,6 +315,143 @@ export default class ChainAtlasRoom implements Party.Server {
 
     if (message.type === "presence:leave") {
       this.handleLeave(sender);
+      return;
+    }
+
+    if (message.type === "merchant:upsert-shop" || message.type === "merchant:sync-external") {
+      const sellerAddress = sender.state?.snapshot.address?.toLowerCase();
+      const incomingSeller = message.payload.shop.seller.toLowerCase();
+      if (!sellerAddress || sellerAddress !== incomingSeller) {
+        sender.send(
+          serialize({
+            type: "merchant:error",
+            payload: { message: "Seller wallet mismatch for merchant update" },
+          }),
+        );
+        return;
+      }
+
+      const normalized = this.normalizeShop(message.payload.shop);
+      if (!normalized) {
+        sender.send(
+          serialize({
+            type: "merchant:error",
+            payload: { message: "Merchant shop does not match room chain" },
+          }),
+        );
+        return;
+      }
+
+      const nextShop =
+        message.type === "merchant:sync-external"
+          ? this.mergeExternalListings(normalized)
+          : normalized;
+
+      if (nextShop.listings.length === 0) {
+        this.merchantShopsBySeller.delete(incomingSeller);
+        await this.persistMerchantShop(incomingSeller, undefined);
+        this.party.broadcast(
+          serialize({
+            type: "merchant:listing-removed",
+            payload: { seller: normalized.seller, listingId: "*" },
+          }),
+        );
+        return;
+      }
+
+      this.merchantShopsBySeller.set(incomingSeller, nextShop);
+      await this.persistMerchantShop(incomingSeller, nextShop);
+      this.party.broadcast(
+        serialize({
+          type: "merchant:upserted",
+          payload: { shop: nextShop },
+        }),
+      );
+      return;
+    }
+
+    if (message.type === "merchant:cancel-listing") {
+      const sellerAddress = sender.state?.snapshot.address?.toLowerCase();
+      const payloadSeller = message.payload.seller.toLowerCase();
+      if (!sellerAddress || sellerAddress !== payloadSeller) {
+        sender.send(
+          serialize({
+            type: "merchant:error",
+            payload: { message: "Only seller can cancel merchant listings" },
+          }),
+        );
+        return;
+      }
+
+      const shop = this.merchantShopsBySeller.get(payloadSeller);
+      if (!shop) {
+        return;
+      }
+      const nextListings = shop.listings.filter((listing) => listing.listingId !== message.payload.listingId);
+      if (nextListings.length === 0) {
+        this.merchantShopsBySeller.delete(payloadSeller);
+        await this.persistMerchantShop(payloadSeller, undefined);
+      } else {
+        const nextShop: MerchantShop = {
+          ...shop,
+          listings: nextListings,
+          updatedAt: Date.now(),
+        };
+        this.merchantShopsBySeller.set(payloadSeller, nextShop);
+        await this.persistMerchantShop(payloadSeller, nextShop);
+        this.party.broadcast(
+          serialize({
+            type: "merchant:upserted",
+            payload: { shop: nextShop },
+          }),
+        );
+      }
+      this.party.broadcast(
+        serialize({
+          type: "merchant:listing-removed",
+          payload: {
+            seller: shop.seller,
+            listingId: message.payload.listingId,
+          },
+        }),
+      );
+      return;
+    }
+
+    if (message.type === "merchant:mark-fulfilled") {
+      const payloadSeller = message.payload.seller.toLowerCase();
+      const shop = this.merchantShopsBySeller.get(payloadSeller);
+      if (!shop) {
+        return;
+      }
+      const nextListings = shop.listings.filter((listing) => listing.listingId !== message.payload.listingId);
+      if (nextListings.length === 0) {
+        this.merchantShopsBySeller.delete(payloadSeller);
+        await this.persistMerchantShop(payloadSeller, undefined);
+      } else {
+        const nextShop: MerchantShop = {
+          ...shop,
+          listings: nextListings,
+          updatedAt: Date.now(),
+        };
+        this.merchantShopsBySeller.set(payloadSeller, nextShop);
+        await this.persistMerchantShop(payloadSeller, nextShop);
+        this.party.broadcast(
+          serialize({
+            type: "merchant:upserted",
+            payload: { shop: nextShop },
+          }),
+        );
+      }
+      this.party.broadcast(
+        serialize({
+          type: "merchant:listing-removed",
+          payload: {
+            seller: shop.seller,
+            listingId: message.payload.listingId,
+          },
+        }),
+      );
     }
   }
 
@@ -295,5 +478,112 @@ export default class ChainAtlasRoom implements Party.Server {
         },
       }),
     );
+  }
+
+  private getRoomChain() {
+    return this.party.id.startsWith("base:") ? "base" : "ethereum";
+  }
+
+  private getSerializedMerchants(now = Date.now()) {
+    const shops: MerchantShop[] = [];
+    for (const shop of this.merchantShopsBySeller.values()) {
+      const listings = clampListings(shop.listings, now);
+      if (listings.length === 0) {
+        continue;
+      }
+      shops.push({
+        ...shop,
+        listings,
+      });
+    }
+    return shops;
+  }
+
+  private normalizeShop(shop: MerchantShop): MerchantShop | undefined {
+    const roomId = this.party.id as MerchantShop["roomId"];
+    const chain = this.getRoomChain();
+    if (shop.chain !== chain || shop.roomId !== roomId) {
+      return undefined;
+    }
+    const now = Date.now();
+    return {
+      ...shop,
+      chain,
+      roomId,
+      updatedAt: now,
+      listings: clampListings(
+        shop.listings.map((listing) => ({
+          ...listing,
+          chain,
+          seller: shop.seller,
+          status: listing.status === "active" ? "active" : listing.status,
+          updatedAt: listing.updatedAt || now,
+          createdAt: listing.createdAt || now,
+        })),
+      ),
+    };
+  }
+
+  private mergeExternalListings(shop: MerchantShop) {
+    const sellerKey = shop.seller.toLowerCase();
+    const existing = this.merchantShopsBySeller.get(sellerKey);
+    if (!existing) {
+      return shop;
+    }
+
+    const chainatlasListings = existing.listings.filter((listing) => listing.source === "chainatlas");
+    const externalListings = shop.listings.filter((listing) => listing.source === "opensea");
+    const merged: MerchantShop = {
+      ...existing,
+      mode: shop.mode,
+      anchor: shop.anchor,
+      updatedAt: Date.now(),
+      listings: clampListings([...chainatlasListings, ...externalListings]),
+    };
+    return merged;
+  }
+
+  private async ensureMerchantsLoaded() {
+    if (!this.merchantsLoadPromise) {
+      this.merchantsLoadPromise = this.loadMerchantsFromStorage();
+    }
+    await this.merchantsLoadPromise;
+  }
+
+  private async loadMerchantsFromStorage() {
+    const rawIndex = await this.party.storage.get<string[]>(MERCHANT_INDEX_STORAGE_KEY);
+    const sellerKeys = Array.isArray(rawIndex) ? rawIndex : [];
+    for (const sellerKey of sellerKeys) {
+      const rawShop = await this.party.storage.get<MerchantShop>(
+        `${MERCHANT_STORAGE_PREFIX}${sellerKey}`,
+      );
+      if (!rawShop) {
+        continue;
+      }
+      const normalized = this.normalizeShop(rawShop);
+      if (!normalized || normalized.listings.length === 0) {
+        continue;
+      }
+      this.merchantShopsBySeller.set(sellerKey, normalized);
+    }
+    await this.persistMerchantIndex();
+  }
+
+  private async persistMerchantIndex() {
+    await this.party.storage.put(
+      MERCHANT_INDEX_STORAGE_KEY,
+      [...this.merchantShopsBySeller.keys()],
+    );
+  }
+
+  private async persistMerchantShop(sellerKey: string, shop?: MerchantShop) {
+    const storageKey = `${MERCHANT_STORAGE_PREFIX}${sellerKey}`;
+    if (!shop) {
+      await this.party.storage.delete(storageKey);
+      await this.persistMerchantIndex();
+      return;
+    }
+    await this.party.storage.put(storageKey, shop);
+    await this.persistMerchantIndex();
   }
 }

@@ -1,4 +1,3 @@
-import { useGLTF } from "@react-three/drei";
 import {
   WORLD_CONFIG,
   type AvatarId,
@@ -6,6 +5,7 @@ import {
   type Vector3Like,
   type WorldRoomId,
 } from "@chainatlas/shared";
+import { useGLTF } from "@react-three/drei";
 
 import character1GlbUrl from "../../../../../assets-optimized/character-1.glb?url";
 import character2GlbUrl from "../../../../../assets-optimized/character-2.glb?url";
@@ -242,8 +242,8 @@ const BUILDINGS_BY_INTERACTION_ZONE_ID: Record<string, BuildingNode> =
     },
     {},
   );
-export const SCENE_INTERACTION_ZONES: ZoneConfig[] = WORLD_CONFIG.interactionZones.map(
-  (zone) => {
+export const SCENE_INTERACTION_ZONES: ZoneConfig[] =
+  WORLD_CONFIG.interactionZones.map((zone) => {
     const bridgeZoneOverride =
       BRIDGE_CONFIG.interactionZones[
         zone.id as keyof typeof BRIDGE_CONFIG.interactionZones
@@ -282,8 +282,7 @@ export const SCENE_INTERACTION_ZONES: ZoneConfig[] = WORLD_CONFIG.interactionZon
         z: linkedBuilding.interactionZoneSize.z,
       },
     };
-  },
-);
+  });
 
 export const WALKABLE_CIRCLES: CircleArea[] = [
   { x: -58, z: 0, r: 43 },
@@ -299,15 +298,17 @@ export const WALKABLE_RECTS: RectArea[] = [
   },
 ];
 
-export const OBSTACLE_RECTS: RotatedRectArea[] = ALL_BUILDINGS.map((building) => ({
-  x: building.obstacle.x ?? building.position[0],
-  z: building.obstacle.z ?? building.position[2],
-  // Building obstacles are authored at mesh footprint size. Inset by avatar
-  // radius so the runtime expansion lands on the visible building edge.
-  hx: Math.max(building.obstacle.hx - BUILDING_COLLISION_INSET, 0.25),
-  hz: Math.max(building.obstacle.hz - BUILDING_COLLISION_INSET, 0.25),
-  rotationY: building.obstacle.rotationY ?? getBuildingRotationY(building),
-}));
+export const OBSTACLE_RECTS: RotatedRectArea[] = ALL_BUILDINGS.map(
+  (building) => ({
+    x: building.obstacle.x ?? building.position[0],
+    z: building.obstacle.z ?? building.position[2],
+    // Building obstacles are authored at mesh footprint size. Inset by avatar
+    // radius so the runtime expansion lands on the visible building edge.
+    hx: Math.max(building.obstacle.hx - BUILDING_COLLISION_INSET, 0.25),
+    hz: Math.max(building.obstacle.hz - BUILDING_COLLISION_INSET, 0.25),
+    rotationY: building.obstacle.rotationY ?? getBuildingRotationY(building),
+  }),
+);
 
 export const OBSTACLE_CIRCLES: CircleArea[] = [];
 

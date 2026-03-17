@@ -1,5 +1,16 @@
 import { create } from "zustand";
-import { WORLD_CONFIG, type BridgeJob, type InteractionStatus, type OverlaySlice, type PortfolioAsset, type PresenceSnapshot, type SessionSlice, type TokenMinion, type WorldRoomId } from "@chainatlas/shared";
+import {
+  WORLD_CONFIG,
+  type BridgeJob,
+  type InteractionStatus,
+  type MerchantShop,
+  type OverlaySlice,
+  type PortfolioAsset,
+  type PresenceSnapshot,
+  type SessionSlice,
+  type TokenMinion,
+  type WorldRoomId,
+} from "@chainatlas/shared";
 
 type AppState = {
   session: SessionSlice;
@@ -18,10 +29,14 @@ type AppState = {
     total: number;
     visibleSymbols: string[];
   };
+  merchants: {
+    shops: Record<string, MerchantShop>;
+  };
   overlays: OverlaySlice;
   pendingTransactions: {
     jobs: BridgeJob[];
   };
+  partySocket?: WebSocket;
   setWallet(address?: string): void;
   setRoom(roomId: WorldRoomId): void;
   setOverlay(activeOverlay?: OverlaySlice["activeOverlay"], nearbyTarget?: string): void;
@@ -32,6 +47,10 @@ type AppState = {
   setBridgeSelection(assetKey?: string): void;
   setBridgeStep(step: OverlaySlice["bridgeStep"]): void;
   setNearbyTarget(nearbyTarget?: string): void;
+  setNearbyMerchantSeller(seller?: string): void;
+  setMerchantTab(tab: NonNullable<OverlaySlice["merchantTab"]>): void;
+  setMerchantMode(mode: NonNullable<OverlaySlice["merchantMode"]>): void;
+  setMerchantSelectedListingId(listingId?: string): void;
   setPresenceStatus(status: AppState["presence"]["status"]): void;
   setLocalPresence(snapshot: PresenceSnapshot): void;
   setLocalShout(text?: string, expiresAt?: number): void;
@@ -40,10 +59,15 @@ type AppState = {
   clearRemotePresence(): void;
   upsertRemotePresence(connectionId: string, snapshot: PresenceSnapshot): void;
   removeRemotePresence(connectionId: string): void;
+  hydrateMerchants(shops: MerchantShop[]): void;
+  upsertMerchantShop(shop: MerchantShop): void;
+  removeMerchantListing(seller: string, listingId: string): void;
+  clearMerchants(): void;
   hydratePortfolio(assets: PortfolioAsset[]): void;
   hydrateMinions(minions: TokenMinion[], total: number, visibleSymbols: string[]): void;
   setPendingJobs(jobs: BridgeJob[]): void;
   setInteractionStatus(status: InteractionStatus): void;
+  setPartySocket(socket?: WebSocket): void;
 };
 
 const roomToChain: Record<WorldRoomId, SessionSlice["activeChain"]> = {
@@ -70,10 +94,14 @@ export const useAppStore = create<AppState>((set) => ({
     total: 0,
     visibleSymbols: [],
   },
+  merchants: {
+    shops: {},
+  },
   overlays: {},
   pendingTransactions: {
     jobs: [],
   },
+  partySocket: undefined,
   setWallet(address) {
     set((state) => ({
       session: {
@@ -96,7 +124,28 @@ export const useAppStore = create<AppState>((set) => ({
     set((state) => ({
       overlays: {
         activeOverlay,
-        nearbyTarget: nearbyTarget ?? state.overlays.nearbyTarget,
+        nearbyTarget:
+          activeOverlay === "merchant"
+            ? state.overlays.nearbyTarget
+            : nearbyTarget ?? state.overlays.nearbyTarget,
+        nearbyMerchantSeller:
+          activeOverlay === "merchant"
+            ? nearbyTarget ?? state.overlays.nearbyMerchantSeller
+            : undefined,
+        merchantTab:
+          activeOverlay === "merchant"
+            ? state.overlays.activeOverlay === "merchant"
+              ? state.overlays.merchantTab ?? "browse"
+              : "browse"
+            : undefined,
+        merchantMode:
+          activeOverlay === "merchant"
+            ? state.overlays.merchantMode ?? "clone"
+            : undefined,
+        merchantSelectedListingId:
+          activeOverlay === "merchant"
+            ? state.overlays.merchantSelectedListingId
+            : undefined,
         swapSelectedAssetKey:
           activeOverlay === "swap" ? state.overlays.swapSelectedAssetKey : undefined,
         swapStep:
@@ -179,7 +228,8 @@ export const useAppStore = create<AppState>((set) => ({
       if (
         state.overlays.activeOverlay === "chat" ||
         state.overlays.activeOverlay === "player" ||
-        state.overlays.activeOverlay === "send"
+        state.overlays.activeOverlay === "send" ||
+        state.overlays.activeOverlay === "merchant"
       ) {
         return state;
       }
@@ -192,6 +242,111 @@ export const useAppStore = create<AppState>((set) => ({
           nearbyTarget,
         },
       };
+    });
+  },
+  setNearbyMerchantSeller(seller) {
+    set((state) => {
+      if (state.overlays.nearbyMerchantSeller === seller) {
+        return state;
+      }
+      return {
+        overlays: {
+          ...state.overlays,
+          nearbyMerchantSeller: seller,
+        },
+      };
+    });
+  },
+  setMerchantTab(tab) {
+    set((state) => ({
+      overlays: {
+        ...state.overlays,
+        merchantTab: tab,
+      },
+    }));
+  },
+  setMerchantMode(mode) {
+    set((state) => ({
+      overlays: {
+        ...state.overlays,
+        merchantMode: mode,
+      },
+    }));
+  },
+  setMerchantSelectedListingId(listingId) {
+    set((state) => ({
+      overlays: {
+        ...state.overlays,
+        merchantSelectedListingId: listingId,
+      },
+    }));
+  },
+  hydrateMerchants(shops) {
+    const next = shops.reduce<Record<string, MerchantShop>>((accumulator, shop) => {
+      accumulator[shop.seller.toLowerCase()] = shop;
+      return accumulator;
+    }, {});
+    set({
+      merchants: {
+        shops: next,
+      },
+    });
+  },
+  upsertMerchantShop(shop) {
+    set((state) => ({
+      merchants: {
+        shops: {
+          ...state.merchants.shops,
+          [shop.seller.toLowerCase()]: shop,
+        },
+      },
+    }));
+  },
+  removeMerchantListing(seller, listingId) {
+    set((state) => {
+      const key = seller.toLowerCase();
+      const current = state.merchants.shops[key];
+      if (!current) {
+        return state;
+      }
+      if (listingId === "*") {
+        const nextShops = { ...state.merchants.shops };
+        delete nextShops[key];
+        return {
+          merchants: {
+            shops: nextShops,
+          },
+        };
+      }
+      const nextListings = current.listings.filter((listing) => listing.listingId !== listingId);
+      if (nextListings.length === 0) {
+        const nextShops = { ...state.merchants.shops };
+        delete nextShops[key];
+        return {
+          merchants: {
+            shops: nextShops,
+          },
+        };
+      }
+      return {
+        merchants: {
+          shops: {
+            ...state.merchants.shops,
+            [key]: {
+              ...current,
+              listings: nextListings,
+              updatedAt: Date.now(),
+            },
+          },
+        },
+      };
+    });
+  },
+  clearMerchants() {
+    set({
+      merchants: {
+        shops: {},
+      },
     });
   },
   setPresenceStatus(status) {
@@ -345,5 +500,8 @@ export const useAppStore = create<AppState>((set) => ({
           }
         : state.presence,
     }));
+  },
+  setPartySocket(socket) {
+    set({ partySocket: socket });
   },
 }));

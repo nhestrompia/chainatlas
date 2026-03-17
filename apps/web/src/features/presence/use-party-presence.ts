@@ -12,6 +12,11 @@ export function usePartyPresence() {
   const clearRemote = useAppStore((state) => state.clearRemotePresence);
   const upsertRemote = useAppStore((state) => state.upsertRemotePresence);
   const removeRemote = useAppStore((state) => state.removeRemotePresence);
+  const hydrateMerchants = useAppStore((state) => state.hydrateMerchants);
+  const upsertMerchantShop = useAppStore((state) => state.upsertMerchantShop);
+  const removeMerchantListing = useAppStore((state) => state.removeMerchantListing);
+  const clearMerchants = useAppStore((state) => state.clearMerchants);
+  const setPartySocket = useAppStore((state) => state.setPartySocket);
   const hasSentInitRef = useRef(false);
   const [socketOpenVersion, setSocketOpenVersion] = useState(0);
 
@@ -26,11 +31,15 @@ export function usePartyPresence() {
     onClose() {
       setStatus("disconnected");
       clearRemote();
+      clearMerchants();
+      setPartySocket(undefined);
       hasSentInitRef.current = false;
     },
     onError() {
       setStatus("disconnected");
       clearRemote();
+      clearMerchants();
+      setPartySocket(undefined);
       hasSentInitRef.current = false;
     },
     onMessage(event) {
@@ -56,6 +65,7 @@ export function usePartyPresence() {
           {},
         );
         hydrateRemote(nextRemote);
+        hydrateMerchants(message.payload.merchants ?? []);
       }
       if (message.type === "presence:joined" || message.type === "presence:updated") {
         upsertRemote(message.payload.connectionId, message.payload.snapshot);
@@ -63,14 +73,35 @@ export function usePartyPresence() {
       if (message.type === "presence:left") {
         removeRemote(message.payload.connectionId);
       }
+      if (message.type === "merchant:snapshot") {
+        hydrateMerchants(message.payload.shops);
+      }
+      if (message.type === "merchant:upserted") {
+        upsertMerchantShop(message.payload.shop);
+      }
+      if (message.type === "merchant:listing-removed") {
+        removeMerchantListing(message.payload.seller, message.payload.listingId);
+      }
     },
   });
 
   useEffect(() => {
     setStatus("connecting");
     clearRemote();
+    clearMerchants();
     hasSentInitRef.current = false;
-  }, [clearRemote, session.currentRoomId, setStatus]);
+    setPartySocket(undefined);
+  }, [clearMerchants, clearRemote, session.currentRoomId, setPartySocket, setStatus]);
+
+  useEffect(() => {
+    if (!socket || socket.readyState !== 1) {
+      return;
+    }
+    setPartySocket(socket as WebSocket);
+    return () => {
+      setPartySocket(undefined);
+    };
+  }, [setPartySocket, socket, socketOpenVersion]);
 
   useEffect(() => {
     if (!socket || !local || socket.readyState !== 1) {

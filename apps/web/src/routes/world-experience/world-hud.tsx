@@ -74,6 +74,11 @@ const LazyPlayerPanel = lazy(() =>
     default: module.PlayerPanel,
   })),
 );
+const LazyMerchantPanel = lazy(() =>
+  import("@/features/overlays/action-panels").then((module) => ({
+    default: module.MerchantPanel,
+  })),
+);
 
 export function WorldHud() {
   const { address, authenticated, disconnect } = usePrivyWallet();
@@ -83,6 +88,16 @@ export function WorldHud() {
   const setLocalShout = useAppStore((state) => state.setLocalShout);
   const localPresence = useAppStore((state) => state.presence.local);
   const nearbyTarget = useAppStore((state) => state.overlays.nearbyTarget);
+  const nearbyMerchantSeller = useAppStore(
+    (state) => state.overlays.nearbyMerchantSeller,
+  );
+  const nearbyMerchantShop = useAppStore((state) => {
+    const seller = state.overlays.nearbyMerchantSeller?.toLowerCase();
+    if (!seller) {
+      return undefined;
+    }
+    return state.merchants.shops[seller];
+  });
   const nearbyTargetLabel = useAppStore((state) => {
     const target = state.overlays.nearbyTarget?.toLowerCase();
     if (!target) {
@@ -136,6 +151,7 @@ export function WorldHud() {
     if (overlays.activeOverlay === "jobs") return <LazyJobsPanel />;
     if (overlays.activeOverlay === "chat") return <LazyChatPanel />;
     if (overlays.activeOverlay === "player") return <LazyPlayerPanel />;
+    if (overlays.activeOverlay === "merchant") return <LazyMerchantPanel />;
     return null;
   }, [overlays.activeOverlay, overlays.bridgeStep, overlays.sendStep, overlays.swapStep]);
   const immersiveActionPanel =
@@ -231,6 +247,21 @@ export function WorldHud() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              {address ? (
+                <button
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-amber-50 shadow-xl backdrop-blur-xl transition-colors",
+                    overlays.activeOverlay === "merchant" &&
+                      overlays.nearbyMerchantSeller?.toLowerCase() === address.toLowerCase()
+                      ? "border-amber-200/65 bg-amber-300/25"
+                      : "border-amber-200/40 bg-[#2b1e12]/88 hover:border-amber-200/60 hover:bg-[#3a2818]",
+                  )}
+                  onClick={() => setOverlay("merchant", address)}
+                  type="button"
+                >
+                  My Merchant
+                </button>
+              ) : null}
               {/* <div className="rounded-full border border-cyan-100/20 bg-[#08151d]/85 px-3 py-1.5 text-cyan-50 shadow-xl tabular-nums backdrop-blur-xl">
                 Players {nearbyPlayers}
               </div> */}
@@ -250,6 +281,23 @@ export function WorldHud() {
                     {nearbyTargetLabel
                       ? `· ${nearbyTargetLabel}`
                       : `· ${shortAddress(nearbyTarget)}`}
+                  </span>
+                </button>
+              ) : null}
+              {nearbyMerchantSeller && nearbyMerchantShop ? (
+                <button
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-amber-50 shadow-xl backdrop-blur-xl transition-colors",
+                    overlays.activeOverlay === "merchant"
+                      ? "border-amber-200/65 bg-amber-300/25"
+                      : "border-amber-200/40 bg-[#2b1e12]/88 hover:border-amber-200/60 hover:bg-[#3a2818]",
+                  )}
+                  onClick={() => setOverlay("merchant", nearbyMerchantSeller)}
+                  type="button"
+                >
+                  Merchant
+                  <span className="ml-1 text-amber-100/80">
+                    · {nearbyMerchantShop.listings.length} items
                   </span>
                 </button>
               ) : null}

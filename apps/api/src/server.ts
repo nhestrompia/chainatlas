@@ -3,9 +3,11 @@ import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import {
+  chainSlugSchema,
   portfolioAssetSchema,
   protocolRegistryEntrySchema,
 } from "@chainatlas/shared";
+import { z } from "zod";
 import { createApiDataService } from "./data";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -43,6 +45,36 @@ app.get("/protocol-registry", async (_request, reply) => {
   const payload = dataService
     .listProtocolRegistry()
     .map((entry) => protocolRegistryEntrySchema.parse(entry));
+  return reply.send(payload);
+});
+
+app.get("/nfts/:address", async (request, reply) => {
+  const params = request.params as { address: string };
+  const query = request.query as { chain?: string; cursor?: string };
+  const chain = chainSlugSchema.parse(query.chain);
+  const payload = await dataService.listWalletNfts(params.address, chain, query.cursor);
+  return reply.send(payload);
+});
+
+app.get("/market/opensea/listings/:address", async (request, reply) => {
+  const params = request.params as { address: string };
+  const query = request.query as { chain?: string; limit?: string };
+  const chain = chainSlugSchema.parse(query.chain);
+  const limit = query.limit ? Number.parseInt(query.limit, 10) : 20;
+  const payload = await dataService.listOpenSeaListings(params.address, chain, limit);
+  return reply.send(payload);
+});
+
+const openSeaFulfillmentRequestSchema = z.object({
+  chain: chainSlugSchema,
+  orderHash: z.string().regex(/^0x[a-fA-F0-9]+$/),
+  protocolAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+  fulfiller: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+});
+
+app.post("/market/opensea/fulfillment", async (request, reply) => {
+  const body = openSeaFulfillmentRequestSchema.parse(request.body);
+  const payload = await dataService.buildOpenSeaFulfillment(body);
   return reply.send(payload);
 });
 
