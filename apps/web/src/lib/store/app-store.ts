@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { WORLD_CONFIG, type BridgeJob, type InteractionStatus, type OverlaySlice, type PortfolioAsset, type PresenceSnapshot, type SessionSlice, type TokenMinion, type WorldRoomId } from "@chainatlas/shared";
+import { WORLD_CONFIG, type BridgeJob, type InteractionStatus, type OverlaySlice, type PortfolioAsset, type PredictionMarket, type PresenceSnapshot, type SessionSlice, type TokenMinion, type WorldRoomId } from "@chainatlas/shared";
 
 type AppState = {
   session: SessionSlice;
@@ -19,6 +19,10 @@ type AppState = {
     visibleSymbols: string[];
   };
   overlays: OverlaySlice;
+  predictionMarkets: {
+    markets: PredictionMarket[];
+    loading: boolean;
+  };
   pendingTransactions: {
     jobs: BridgeJob[];
   };
@@ -44,11 +48,14 @@ type AppState = {
   hydrateMinions(minions: TokenMinion[], total: number, visibleSymbols: string[]): void;
   setPendingJobs(jobs: BridgeJob[]): void;
   setInteractionStatus(status: InteractionStatus): void;
+  hydratePredictionMarkets(markets: PredictionMarket[]): void;
+  setPredictionSelectedMarket(index?: number): void;
 };
 
 const roomToChain: Record<WorldRoomId, SessionSlice["activeChain"]> = {
   "ethereum:main": "ethereum",
   "base:main": "base",
+  "polygon:main": "polygon",
 };
 
 export const useAppStore = create<AppState>((set) => ({
@@ -71,6 +78,10 @@ export const useAppStore = create<AppState>((set) => ({
     visibleSymbols: [],
   },
   overlays: {},
+  predictionMarkets: {
+    markets: [],
+    loading: false,
+  },
   pendingTransactions: {
     jobs: [],
   },
@@ -97,6 +108,10 @@ export const useAppStore = create<AppState>((set) => ({
       overlays: {
         activeOverlay,
         nearbyTarget: nearbyTarget ?? state.overlays.nearbyTarget,
+        predictionSelectedMarketIndex:
+          activeOverlay === "prediction"
+            ? state.overlays.predictionSelectedMarketIndex
+            : undefined,
         swapSelectedAssetKey:
           activeOverlay === "swap" ? state.overlays.swapSelectedAssetKey : undefined,
         swapStep:
@@ -344,6 +359,22 @@ export const useAppStore = create<AppState>((set) => ({
             },
           }
         : state.presence,
+    }));
+  },
+  hydratePredictionMarkets(markets) {
+    set({
+      predictionMarkets: {
+        markets,
+        loading: false,
+      },
+    });
+  },
+  setPredictionSelectedMarket(index) {
+    set((state) => ({
+      overlays: {
+        ...state.overlays,
+        predictionSelectedMarketIndex: index,
+      },
     }));
   },
 }));

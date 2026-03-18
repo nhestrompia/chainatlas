@@ -74,6 +74,11 @@ const LazyPlayerPanel = lazy(() =>
     default: module.PlayerPanel,
   })),
 );
+const LazyPredictionPanel = lazy(() =>
+  import("@/features/overlays/action-panels").then((module) => ({
+    default: module.PredictionPanel,
+  })),
+);
 
 export function WorldHud() {
   const { address, authenticated, disconnect } = usePrivyWallet();
@@ -136,6 +141,7 @@ export function WorldHud() {
     if (overlays.activeOverlay === "jobs") return <LazyJobsPanel />;
     if (overlays.activeOverlay === "chat") return <LazyChatPanel />;
     if (overlays.activeOverlay === "player") return <LazyPlayerPanel />;
+    if (overlays.activeOverlay === "prediction") return <LazyPredictionPanel />;
     return null;
   }, [overlays.activeOverlay, overlays.bridgeStep, overlays.sendStep, overlays.swapStep]);
   const immersiveActionPanel =
@@ -199,7 +205,11 @@ export function WorldHud() {
             <div className="rounded-full border border-cyan-100/20 bg-[#08151d]/85 px-3 py-1.5 text-sm text-cyan-50 shadow-xl backdrop-blur-xl">
               <span className="text-cyan-100/60">Island </span>
               <span className="font-semibold">
-                {session.activeChain === "ethereum" ? "Ethereum" : "Base"}
+                {session.activeChain === "ethereum"
+                  ? "Ethereum"
+                  : session.activeChain === "polygon"
+                    ? "Polygon"
+                    : "Base"}
               </span>
             </div>
             <div className="pointer-events-auto flex flex-wrap items-center gap-2 text-xs sm:text-sm">

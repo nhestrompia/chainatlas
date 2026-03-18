@@ -1,3 +1,4 @@
+import type { ChainSlug } from "@chainatlas/shared";
 import { resumeBridge, startBridge } from "@/features/transactions/bridge";
 import {
   ensureWalletChain,
@@ -219,7 +220,7 @@ export function BridgePanel() {
   const registry = runtimeConfig.protocolRegistry;
 
   const sourceChain = activeChain;
-  const destinationChain: "ethereum" | "base" =
+  const destinationChain: ChainSlug =
     activeChain === "ethereum" ? "base" : "ethereum";
   const [amount, setAmount] = useState("0.005");
   const [submittedTx, setSubmittedTx] = useState<SubmittedTx>();

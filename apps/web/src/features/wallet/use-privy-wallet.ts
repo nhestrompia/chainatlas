@@ -9,7 +9,7 @@ import {
   getAddress,
   type WalletClient,
 } from "viem";
-import { base, baseSepolia, mainnet, sepolia } from "viem/chains";
+import { base, baseSepolia, mainnet, polygon, polygonAmoy, sepolia } from "viem/chains";
 import { env } from "@/lib/config/env";
 import { getChainIdForSlug, runtimeProfile } from "@/lib/config/runtime";
 import { fetchWalletPortfolio, resolveChainSlug } from "./wallet-asset-portfolio";
@@ -31,8 +31,10 @@ function getRuntimeChain(slug: ChainSlug) {
   const chainId = getChainIdForSlug(slug);
   if (chainId === mainnet.id) return mainnet;
   if (chainId === base.id) return base;
+  if (chainId === polygon.id) return polygon;
   if (chainId === sepolia.id) return sepolia;
   if (chainId === baseSepolia.id) return baseSepolia;
+  if (chainId === polygonAmoy.id) return polygonAmoy;
   throw new Error(`Unsupported runtime chain for ${slug}`);
 }
 
@@ -107,6 +109,9 @@ function chainSlugFromChainId(chainId: number): ChainSlug | undefined {
   }
   if (chainId === 8453 || chainId === 84532) {
     return "base";
+  }
+  if (chainId === 137 || chainId === 80002) {
+    return "polygon";
   }
   return undefined;
 }

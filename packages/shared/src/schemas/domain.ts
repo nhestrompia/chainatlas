@@ -1,10 +1,11 @@
 import { z } from "zod";
 
-export const chainSlugSchema = z.enum(["ethereum", "base"]);
+export const chainSlugSchema = z.enum(["ethereum", "base", "polygon"]);
 export const runtimeProfileSchema = z.enum(["testnet", "mainnet"]);
 export const worldRoomIdSchema = z.enum([
   "ethereum:main",
   "base:main",
+  "polygon:main",
 ]);
 export const vector3Schema = z.object({
   x: z.number(),
@@ -16,7 +17,7 @@ export const eulerSchema = vector3Schema;
 export const interactionZoneSchema = z.object({
   id: z.string(),
   label: z.string(),
-  kind: z.enum(["spawn", "swap", "bridge", "send", "district", "portal"]),
+  kind: z.enum(["spawn", "swap", "bridge", "send", "district", "portal", "prediction"]),
   roomId: worldRoomIdSchema,
   chain: chainSlugSchema.optional(),
   position: vector3Schema,
@@ -157,6 +158,16 @@ export const bridgeJobPatchSchema = bridgeJobSchema
     status: bridgeJobSchema.shape.status.optional(),
     updatedAt: z.string().optional(),
   });
+
+export const predictionMarketSchema = z.object({
+  id: z.string(),
+  question: z.string(),
+  yesPrice: z.number().min(0).max(1),
+  noPrice: z.number().min(0).max(1),
+  volume: z.number().nonnegative(),
+  slug: z.string(),
+  updatedAt: z.number(),
+});
 
 export const swapRouteConfigSchema = z.object({
   routeId: z.string(),

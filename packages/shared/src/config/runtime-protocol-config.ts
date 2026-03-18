@@ -114,10 +114,12 @@ const CHAIN_IDS: Record<RuntimeProfile, Record<ChainSlug, number>> = {
   mainnet: {
     ethereum: 1,
     base: 8453,
+    polygon: 137,
   },
   testnet: {
     ethereum: 11155111,
     base: 84532,
+    polygon: 80002,
   },
 };
 
@@ -494,6 +496,12 @@ export function getRuntimeProtocolConfig(
         chainId: CHAIN_IDS[profile].base,
         label: profile === "testnet" ? "Base Sepolia" : "Base",
         wrappedNativeAddress: addresses.wrappedNative.base,
+      },
+      polygon: {
+        slug: "polygon",
+        chainId: CHAIN_IDS[profile].polygon,
+        label: profile === "testnet" ? "Amoy" : "Polygon",
+        wrappedNativeAddress: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
       },
     },
     swapRoutes,

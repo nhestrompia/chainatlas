@@ -5,3 +5,4 @@ export { SendSelectPanel, SendPanel } from "./send-panels";
 export { SwapSelectPanel, SwapPanel } from "./swap-panels";
 export { BridgeSelectPanel, BridgePanel } from "./bridge-panel";
 export { JobsPanel } from "./jobs-panel";
+export { PredictionPanel } from "./prediction-panel";

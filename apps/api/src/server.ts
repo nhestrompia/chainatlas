@@ -7,6 +7,7 @@ import {
   protocolRegistryEntrySchema,
 } from "@chainatlas/shared";
 import { createApiDataService } from "./data";
+import { fetchTopPredictionMarkets } from "./polymarket";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -44,6 +45,16 @@ app.get("/protocol-registry", async (_request, reply) => {
     .listProtocolRegistry()
     .map((entry) => protocolRegistryEntrySchema.parse(entry));
   return reply.send(payload);
+});
+
+app.get("/polymarket/top-markets", async (_request, reply) => {
+  try {
+    const markets = await fetchTopPredictionMarkets();
+    return reply.send(markets);
+  } catch (error) {
+    console.error("[polymarket]", error);
+    return reply.status(502).send({ message: "Failed to fetch prediction markets" });
+  }
 });
 
 const port = Number(process.env.PORT ?? 4000);
