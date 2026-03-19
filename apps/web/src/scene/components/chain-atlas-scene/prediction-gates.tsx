@@ -4,19 +4,32 @@ import type { PredictionMarket } from "@chainatlas/shared";
 import { Text } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useRef, useState } from "react";
-import { MeshStandardMaterial } from "three";
+import { Group, Mesh, MeshStandardMaterial } from "three";
 import { PREDICTION_PLAZA, type Vec3Tuple } from "./config";
 
 const POLL_INTERVAL_MS = 30_000;
+const BUY_EFFECT_DURATION_MS = 1_200;
+const BUY_INTENT_EVENT = "prediction:buy-intent";
 const YES_COLOR = "#22c55e";
 const NO_COLOR = "#ef4444";
-const YES_EMISSIVE = "#166534";
-const NO_EMISSIVE = "#7f1d1d";
+const YES_EMISSIVE = "#34d399";
+const NO_EMISSIVE = "#fb7185";
 const FRAME_COLOR = "#334155";
 const FRAME_EDGE = "#64748b";
 const PLATFORM_COLOR = "#475569";
 const PLATFORM_TOP = "#64748b";
 const PLATFORM_Y = -0.4;
+
+type BuySide = "yes" | "no";
+type BuyEffect = {
+  side: BuySide;
+  startedAtMs: number;
+};
+type BuyIntentEventDetail = {
+  side: BuySide;
+  marketIndex: number;
+  amount: number;
+};
 
 function formatPercent(value: number): string {
   return `${Math.round(value * 100)}%`;
@@ -33,17 +46,22 @@ function formatVolume(value: number): string {
 }
 
 function GatePair({
+  buyEffect,
   market,
   position,
   rotationY,
 }: {
+  buyEffect?: BuyEffect;
   market?: PredictionMarket;
   position: Vec3Tuple;
   rotationY: number;
 }) {
+  const groupRef = useRef<Group>(null);
   const yesMaterialRef = useRef<MeshStandardMaterial>(null);
   const noMaterialRef = useRef<MeshStandardMaterial>(null);
   const topBeamMaterialRef = useRef<MeshStandardMaterial>(null);
+  const yesPanelRef = useRef<Mesh>(null);
+  const noPanelRef = useRef<Mesh>(null);
 
   const { gateWidth, gateHeight, gateDepth, gateSpacing } = PREDICTION_PLAZA;
   const halfOffset = (gateWidth + gateSpacing) / 2;
@@ -58,21 +76,41 @@ function GatePair({
     const elapsed = clock.getElapsedTime();
     const pulse = 0.28 + Math.sin(elapsed * 1.8) * 0.12;
     const dim = 0.14 + Math.sin(elapsed * 1.8) * 0.05;
+    const boostWindowMs = buyEffect ? Date.now() - buyEffect.startedAtMs : Number.POSITIVE_INFINITY;
+    const boostProgress = buyEffect
+      ? Math.max(0, Math.min(1, 1 - boostWindowMs / BUY_EFFECT_DURATION_MS))
+      : 0;
+    const boost = boostProgress * boostProgress;
+    const yesBoost = buyEffect?.side === "yes" ? boost : boost * 0.35;
+    const noBoost = buyEffect?.side === "no" ? boost : boost * 0.35;
 
     if (yesMaterialRef.current) {
-      yesMaterialRef.current.emissiveIntensity = yesDominant ? pulse : dim;
+      yesMaterialRef.current.emissiveIntensity =
+        (yesDominant ? pulse : dim) + yesBoost * 0.85;
     }
     if (noMaterialRef.current) {
-      noMaterialRef.current.emissiveIntensity = yesDominant ? dim : pulse;
+      noMaterialRef.current.emissiveIntensity =
+        (yesDominant ? dim : pulse) + noBoost * 0.85;
     }
     if (topBeamMaterialRef.current) {
       topBeamMaterialRef.current.emissiveIntensity =
-        0.12 + Math.sin(elapsed * 1.4) * 0.04;
+        0.12 + Math.sin(elapsed * 1.4) * 0.04 + boost * 0.2;
+    }
+    if (yesPanelRef.current) {
+      const s = 1 + yesBoost * 0.07;
+      yesPanelRef.current.scale.set(s, s, 1);
+    }
+    if (noPanelRef.current) {
+      const s = 1 + noBoost * 0.07;
+      noPanelRef.current.scale.set(s, s, 1);
+    }
+    if (groupRef.current) {
+      groupRef.current.position.y = position[1] + boost * 0.08;
     }
   });
 
   return (
-    <group position={position} rotation={[0, rotationY, 0]}>
+    <group ref={groupRef} position={position} rotation={[0, rotationY, 0]}>
       {/* Ground platform */}
       <mesh receiveShadow position={[0, PLATFORM_Y, 0]}>
         <boxGeometry
@@ -149,15 +187,20 @@ function GatePair({
             roughness={0.5}
           />
         </mesh>
-        <mesh castShadow receiveShadow position={[0, 0, gateDepth / 2 + 0.14]}>
-          <boxGeometry args={[gateWidth - 0.65, gateHeight - 0.65, 0.02]} />
+        <mesh
+          ref={yesPanelRef}
+          castShadow
+          receiveShadow
+          position={[0, 0, gateDepth / 2 + 0.14]}
+        >
+          <boxGeometry args={[gateWidth - 0.58, gateHeight - 0.58, 0.028]} />
           <meshStandardMaterial
             ref={yesMaterialRef}
-            color="#34d399"
+            color={YES_COLOR}
             emissive={YES_EMISSIVE}
-            emissiveIntensity={0.22}
-            metalness={0.08}
-            roughness={0.28}
+            emissiveIntensity={0.34}
+            metalness={0.04}
+            roughness={0.22}
             polygonOffset
             polygonOffsetFactor={-1}
             polygonOffsetUnits={-1}
@@ -210,15 +253,20 @@ function GatePair({
             roughness={0.5}
           />
         </mesh>
-        <mesh castShadow receiveShadow position={[0, 0, gateDepth / 2 + 0.14]}>
-          <boxGeometry args={[gateWidth - 0.65, gateHeight - 0.65, 0.02]} />
+        <mesh
+          ref={noPanelRef}
+          castShadow
+          receiveShadow
+          position={[0, 0, gateDepth / 2 + 0.14]}
+        >
+          <boxGeometry args={[gateWidth - 0.58, gateHeight - 0.58, 0.028]} />
           <meshStandardMaterial
             ref={noMaterialRef}
-            color="#fb7185"
+            color={NO_COLOR}
             emissive={NO_EMISSIVE}
-            emissiveIntensity={0.22}
-            metalness={0.08}
-            roughness={0.28}
+            emissiveIntensity={0.34}
+            metalness={0.04}
+            roughness={0.22}
             polygonOffset
             polygonOffsetFactor={-1}
             polygonOffsetUnits={-1}
@@ -279,6 +327,10 @@ export function PredictionGates3D() {
   const hydrate = useAppStore((state) => state.hydratePredictionMarkets);
   const markets = useAppStore((state) => state.predictionMarkets.markets);
   const [error, setError] = useState(false);
+  const [buyEffects, setBuyEffects] = useState<
+    Partial<Record<number, BuyEffect>>
+  >({});
+  const buyEffectTimeoutsRef = useRef<number[]>([]);
 
   useEffect(() => {
     let disposed = false;
@@ -309,12 +361,53 @@ export function PredictionGates3D() {
     };
   }, [hydrate]);
 
+  useEffect(() => {
+    const onBuyIntent = (event: Event) => {
+      const custom = event as CustomEvent<BuyIntentEventDetail>;
+      const marketIndex = custom.detail?.marketIndex;
+      const side = custom.detail?.side;
+      if (
+        typeof marketIndex !== "number" ||
+        (side !== "yes" && side !== "no")
+      ) {
+        return;
+      }
+      const startedAtMs = Date.now();
+      setBuyEffects((prev) => ({
+        ...prev,
+        [marketIndex]: { side, startedAtMs },
+      }));
+      const timeoutId = window.setTimeout(() => {
+        setBuyEffects((prev) => {
+          const existing = prev[marketIndex];
+          if (!existing || existing.startedAtMs !== startedAtMs) {
+            return prev;
+          }
+          const next = { ...prev };
+          delete next[marketIndex];
+          return next;
+        });
+      }, BUY_EFFECT_DURATION_MS);
+      buyEffectTimeoutsRef.current.push(timeoutId);
+    };
+
+    window.addEventListener(BUY_INTENT_EVENT, onBuyIntent as EventListener);
+    return () => {
+      window.removeEventListener(BUY_INTENT_EVENT, onBuyIntent as EventListener);
+      for (const timeoutId of buyEffectTimeoutsRef.current) {
+        window.clearTimeout(timeoutId);
+      }
+      buyEffectTimeoutsRef.current = [];
+    };
+  }, []);
+
   return (
     <group>
       {/* Plaza area label */}
 
       {PREDICTION_PLAZA.gatePositions.map((pos, index) => (
         <GatePair
+          buyEffect={buyEffects[index]}
           key={index}
           market={markets[index]}
           position={pos}

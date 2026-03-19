@@ -299,5 +299,10 @@ export interface PredictionMarket {
   noPrice: number;
   volume: number;
   slug: string;
+  conditionId?: string;
+  yesTokenId?: string;
+  noTokenId?: string;
+  tickSize?: string;
+  negRisk?: boolean;
   updatedAt: number;
 }

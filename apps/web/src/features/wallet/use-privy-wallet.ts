@@ -44,7 +44,14 @@ function resolveRpcUrl(slug: ChainSlug) {
       ? env.sepoliaRpcUrl || env.ethereumRpcUrl
       : env.ethereumRpcUrl;
   }
-  return runtimeProfile === "testnet" ? env.baseSepoliaRpcUrl || env.baseRpcUrl : env.baseRpcUrl;
+  if (slug === "base") {
+    return runtimeProfile === "testnet"
+      ? env.baseSepoliaRpcUrl || env.baseRpcUrl
+      : env.baseRpcUrl;
+  }
+  return runtimeProfile === "testnet"
+    ? env.polygonAmoyRpcUrl || env.polygonRpcUrl
+    : env.polygonRpcUrl;
 }
 
 function resolveRpcCandidates(slug: ChainSlug) {
@@ -54,9 +61,13 @@ function resolveRpcCandidates(slug: ChainSlug) {
       ? runtimeProfile === "testnet"
         ? ["https://ethereum-sepolia-rpc.publicnode.com", sepolia.rpcUrls.default.http[0]]
         : ["https://ethereum-rpc.publicnode.com", mainnet.rpcUrls.default.http[0]]
-      : runtimeProfile === "testnet"
-        ? ["https://base-sepolia-rpc.publicnode.com", baseSepolia.rpcUrls.default.http[0]]
-        : ["https://base-rpc.publicnode.com", base.rpcUrls.default.http[0]];
+      : slug === "base"
+        ? runtimeProfile === "testnet"
+          ? ["https://base-sepolia-rpc.publicnode.com", baseSepolia.rpcUrls.default.http[0]]
+          : ["https://base-rpc.publicnode.com", base.rpcUrls.default.http[0]]
+        : runtimeProfile === "testnet"
+          ? ["https://polygon-amoy-bor-rpc.publicnode.com", polygonAmoy.rpcUrls.default.http[0]]
+          : ["https://polygon-bor-rpc.publicnode.com", polygon.rpcUrls.default.http[0]];
 
   return [...new Set([configured, ...fallbackUrls].map((url) => url?.trim()).filter(Boolean))];
 }
@@ -314,9 +325,13 @@ function getAddEthereumChainParams(slug: ChainSlug) {
       ? runtimeProfile === "testnet"
         ? "https://sepolia.etherscan.io"
         : "https://etherscan.io"
-      : runtimeProfile === "testnet"
-        ? "https://sepolia.basescan.org"
-        : "https://basescan.org";
+      : slug === "base"
+        ? runtimeProfile === "testnet"
+          ? "https://sepolia.basescan.org"
+          : "https://basescan.org"
+        : runtimeProfile === "testnet"
+          ? "https://amoy.polygonscan.com"
+          : "https://polygonscan.com";
 
   return {
     chainId: toHexChainId(chain.id),

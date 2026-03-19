@@ -75,19 +75,83 @@ async function fetchWithTlsFallback(
 interface GammaMarket {
   id: string;
   question: string;
-  outcomePrices: string;
+  outcomePrices: string | string[];
   volume: string | number;
   volume24hr?: string | number;
   slug: string;
+  clobTokenIds?: string | string[];
+  clob_token_ids?: string | string[];
+  conditionId?: string;
+  condition_id?: string;
+  minimum_tick_size?: string | number;
+  min_tick_size?: string | number;
+  tick_size?: string | number;
+  negRisk?: boolean | string;
+  neg_risk?: boolean | string;
+}
+
+function parseStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item ?? "").trim())
+      .filter((item) => item.length > 0);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((item) => String(item ?? "").trim())
+          .filter((item) => item.length > 0);
+      }
+    } catch {
+      // Continue with fallback CSV parsing.
+    }
+    if (trimmed.includes(",")) {
+      return trimmed
+        .split(",")
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+    }
+  }
+  return [];
+}
+
+function parseBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") {
+      return true;
+    }
+    if (normalized === "false") {
+      return false;
+    }
+  }
+  return undefined;
+}
+
+function parseTickSize(value: unknown): string | undefined {
+  const raw = typeof value === "number" ? String(value) : typeof value === "string" ? value : undefined;
+  if (!raw) {
+    return undefined;
+  }
+  const normalized = raw.trim();
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return undefined;
+  }
+  return normalized;
 }
 
 function normalizeMarket(raw: GammaMarket, now: number): PredictionMarket | null {
-  let prices: unknown[];
-  try {
-    prices = JSON.parse(raw.outcomePrices);
-  } catch {
-    return null;
-  }
+  const prices = parseStringArray(raw.outcomePrices);
 
   const yesPrice = Number(prices[0]);
   const noPrice = Number(prices[1]);
@@ -95,6 +159,13 @@ function normalizeMarket(raw: GammaMarket, now: number): PredictionMarket | null
   if (!Number.isFinite(yesPrice) || !Number.isFinite(noPrice)) {
     return null;
   }
+  const tokenIds = parseStringArray(raw.clobTokenIds ?? raw.clob_token_ids);
+  const conditionId = String(raw.conditionId ?? raw.condition_id ?? "").trim();
+  const tickSize =
+    parseTickSize(raw.minimum_tick_size) ??
+    parseTickSize(raw.min_tick_size) ??
+    parseTickSize(raw.tick_size);
+  const negRisk = parseBoolean(raw.negRisk ?? raw.neg_risk);
 
   return {
     id: String(raw.id),
@@ -103,6 +174,11 @@ function normalizeMarket(raw: GammaMarket, now: number): PredictionMarket | null
     noPrice,
     volume: Number(raw.volume) || 0,
     slug: String(raw.slug ?? raw.id),
+    conditionId: conditionId.length > 0 ? conditionId : undefined,
+    yesTokenId: tokenIds[0],
+    noTokenId: tokenIds[1],
+    tickSize,
+    negRisk,
     updatedAt: now,
   };
 }

@@ -452,9 +452,9 @@ export const WALKABLE_CIRCLES: CircleArea[] = [
 export const PREDICTION_PLAZA = {
   gateRotationY: Math.PI,
   gatePositions: [
-    [-14, 1, POLYGON_ISLAND_Z - 13] as Vec3Tuple,
-    [0, 1, POLYGON_ISLAND_Z - 13] as Vec3Tuple,
-    [14, 1, POLYGON_ISLAND_Z - 13] as Vec3Tuple,
+    [-14, 1.35, POLYGON_ISLAND_Z - 13] as Vec3Tuple,
+    [0, 1.35, POLYGON_ISLAND_Z - 13] as Vec3Tuple,
+    [14, 1.35, POLYGON_ISLAND_Z - 13] as Vec3Tuple,
   ],
   gateWidth: 3.5,
   gateHeight: 5.5,

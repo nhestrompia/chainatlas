@@ -166,6 +166,11 @@ export const predictionMarketSchema = z.object({
   noPrice: z.number().min(0).max(1),
   volume: z.number().nonnegative(),
   slug: z.string(),
+  conditionId: z.string().optional(),
+  yesTokenId: z.string().optional(),
+  noTokenId: z.string().optional(),
+  tickSize: z.string().optional(),
+  negRisk: z.boolean().optional(),
   updatedAt: z.number(),
 });
 
