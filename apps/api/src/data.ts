@@ -1,5 +1,5 @@
 import { createPublicClient, erc20Abi, formatUnits, getAddress, http } from "viem";
-import { base, baseSepolia, mainnet, sepolia } from "viem/chains";
+import { base, baseSepolia, mainnet, polygon, polygonAmoy, sepolia } from "viem/chains";
 import {
   getRuntimeProtocolConfig,
   resolveRuntimeProfile,
@@ -39,6 +39,14 @@ const nativeAssetMeta: Record<ChainSlug, Omit<PortfolioAsset, "balance" | "usdVa
     decimals: 18,
     verified: true,
   },
+  polygon: {
+    chain: "polygon",
+    address: "native",
+    symbol: "MATIC",
+    name: "MATIC",
+    decimals: 18,
+    verified: true,
+  },
 };
 
 function getEnvString(env: ApiDataEnv, key: string) {
@@ -65,6 +73,9 @@ function optionalAddressEnv(env: ApiDataEnv, ...keys: string[]) {
 function resolveChain(slug: ChainSlug, profile: RuntimeProfile) {
   if (slug === "ethereum") {
     return profile === "testnet" ? sepolia : mainnet;
+  }
+  if (slug === "polygon") {
+    return profile === "testnet" ? polygonAmoy : polygon;
   }
 
   return profile === "testnet" ? baseSepolia : base;
@@ -121,6 +132,10 @@ function createPublicClients(env: ApiDataEnv) {
         chain: resolveChain("base", "testnet"),
         transport: http(resolveRpcUrl(env, "base", "testnet") ?? resolveChain("base", "testnet").rpcUrls.default.http[0]),
       }),
+      polygon: createPublicClient({
+        chain: resolveChain("polygon", "testnet"),
+        transport: http(resolveChain("polygon", "testnet").rpcUrls.default.http[0]),
+      }),
     },
     mainnet: {
       ethereum: createPublicClient({
@@ -133,6 +148,10 @@ function createPublicClients(env: ApiDataEnv) {
       base: createPublicClient({
         chain: resolveChain("base", "mainnet"),
         transport: http(resolveRpcUrl(env, "base", "mainnet") ?? resolveChain("base", "mainnet").rpcUrls.default.http[0]),
+      }),
+      polygon: createPublicClient({
+        chain: resolveChain("polygon", "mainnet"),
+        transport: http(resolveChain("polygon", "mainnet").rpcUrls.default.http[0]),
       }),
     },
   } as const;

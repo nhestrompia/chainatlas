@@ -1,4 +1,4 @@
-import type { BridgeJob, PortfolioAsset, ProtocolRegistryEntry } from "@chainatlas/shared";
+import type { BridgeJob, PredictionMarket, PortfolioAsset, ProtocolRegistryEntry } from "@chainatlas/shared";
 import { env } from "../config/env";
 import { browserBridgeJobStore } from "../storage/bridge-job-store";
 
@@ -36,4 +36,8 @@ export function createBridgeJob(job: BridgeJob) {
 
 export function patchBridgeJob(id: string, patch: Partial<BridgeJob>) {
   return browserBridgeJobStore.patchJob(id, patch);
+}
+
+export function fetchPredictionMarkets() {
+  return request<PredictionMarket[]>("/polymarket/top-markets");
 }

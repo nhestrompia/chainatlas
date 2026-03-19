@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { z } from "zod";
 import { isAddress } from "viem";
+import type { ChainSlug } from "@chainatlas/shared";
 import { runtimeConfig } from "@/lib/config/runtime";
 import { formatTokenAmount } from "@/lib/utils/format-token-amount";
 import { cn } from "@/lib/utils/cn";
@@ -73,7 +74,7 @@ export async function withXmtpTimeout<T>(promise: Promise<T>, timeoutMessage: st
 }
 
 export type SubmittedTx = {
-  chain: "ethereum" | "base";
+  chain: ChainSlug;
   hash: `0x${string}`;
 };
 
@@ -99,7 +100,7 @@ export function formatDisplayAmount(value: string, maximumFractionDigits = 3) {
   return formatTokenAmount(value, maximumFractionDigits);
 }
 
-export function chainLabel(chain: "ethereum" | "base") {
+export function chainLabel(chain: ChainSlug) {
   return runtimeConfig.chains[chain].label;
 }
 
@@ -160,7 +161,7 @@ export function normalizeWalletInteractionError(error: unknown) {
 export async function refreshPortfolioAfterInteraction(
   queryClient: QueryClient,
   address: string,
-  chains: Array<"ethereum" | "base">,
+  chains: Array<ChainSlug>,
 ) {
   const uniqueChains = [...new Set(chains)];
   await Promise.all(

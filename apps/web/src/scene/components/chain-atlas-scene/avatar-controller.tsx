@@ -24,8 +24,9 @@ import {
 import {
   AVATAR_GROUND_OFFSET,
   AVATAR_MOVE_SPEED,
-  BRIDGE_CONFIG,
-  BRIDGE_GATE_CONFIG,
+  BRIDGES,
+  type BridgeDefinition,
+  type BridgeId,
   CAMERA_FOLLOW_DISTANCE,
   CAMERA_FOLLOW_HEIGHT,
   CAMERA_MAX_DISTANCE,
@@ -38,6 +39,7 @@ import {
   SWAP_SELECT_CAMERA_DISTANCE,
   SWAP_SELECT_CAMERA_HEIGHT,
   shortenAddress,
+  toBridgeLocal,
 } from "./config";
 import {
   getOverlayForZone,
@@ -53,20 +55,20 @@ const WORLD_UP = new Vector3(0, 1, 0);
 
 export const Avatar = memo(function Avatar({
   avatarId,
-  bridgeGateOpen,
+  openGates,
   displayName,
   groundSurfaces,
   labelsVisible,
-  onBridgeGateOpenChange,
+  onGateOpenChange,
   onZoneChange,
   onPositionChange,
 }: {
   avatarId: AvatarId;
-  bridgeGateOpen: boolean;
+  openGates: Partial<Record<BridgeId, boolean>>;
   displayName: string;
   groundSurfaces: Object3D[];
   labelsVisible: boolean;
-  onBridgeGateOpenChange(open: boolean): void;
+  onGateOpenChange(update: Partial<Record<BridgeId, boolean>> | ((prev: Partial<Record<BridgeId, boolean>>) => Partial<Record<BridgeId, boolean>>)): void;
   onZoneChange?(zoneId?: string): void;
   onPositionChange(position: Vector3Like, rotationY: number): void;
 }) {
@@ -78,6 +80,7 @@ export const Avatar = memo(function Avatar({
   const setSendStep = useAppStore((state) => state.setSendStep);
   const setBridgeSelection = useAppStore((state) => state.setBridgeSelection);
   const setBridgeStep = useAppStore((state) => state.setBridgeStep);
+  const setPredictionSelectedMarket = useAppStore((state) => state.setPredictionSelectedMarket);
   const setRoom = useAppStore((state) => state.setRoom);
   const activeOverlay = useAppStore((state) => state.overlays.activeOverlay);
   const nearbyTarget = useAppStore((state) => state.overlays.nearbyTarget);
@@ -120,7 +123,7 @@ export const Avatar = memo(function Avatar({
   const raycasterRef = useRef(new Raycaster());
   const rayOriginRef = useRef(new Vector3());
   const rayDirectionRef = useRef(new Vector3(0, -1, 0));
-  const nearBridgeGateRef = useRef(false);
+  const nearBridgeGateRef = useRef<BridgeId | undefined>(undefined);
   const keys = useRef<Record<string, boolean>>({});
   const cameraOrbitYawRef = useRef(0);
   const cameraDistanceRef = useRef(CAMERA_FOLLOW_DISTANCE);
@@ -131,12 +134,10 @@ export const Avatar = memo(function Avatar({
   } | null>(null);
   const gl = useThree((state) => state.gl);
   const [isMoving, setIsMoving] = useState(false);
-  const [isNearBridgeGate, setIsNearBridgeGate] = useState(false);
+  const [nearBridgeId, setNearBridgeId] = useState<BridgeId | undefined>(undefined);
   const [gateSwitching, setGateSwitching] = useState(false);
   const [gateSwitchError, setGateSwitchError] = useState<string>();
-  const [targetPortalChain, setTargetPortalChain] = useState<ChainSlug>(
-    currentRoomId === "ethereum:main" ? "base" : "ethereum",
-  );
+  const [targetPortalChain, setTargetPortalChain] = useState<ChainSlug>("base");
   const [currentZoneId, setCurrentZoneId] = useState<string>();
   const currentZone = useMemo(
     () => SCENE_INTERACTION_ZONES.find((zone) => zone.id === currentZoneId),
@@ -147,13 +148,18 @@ export const Avatar = memo(function Avatar({
     [currentZone],
   );
   const currentZoneOverlayRef = useRef<typeof currentZoneOverlay>(undefined);
+  const currentZoneIdRef = useRef<string | undefined>(undefined);
   const swapSelectionMode = activeOverlay === "swap" && swapStep !== "details";
   const sendSelectionMode = activeOverlay === "send" && sendStep !== "details";
   const bridgeSelectionMode = activeOverlay === "bridge" && bridgeStep !== "details";
   const selectionMode =
     swapSelectionMode || sendSelectionMode || bridgeSelectionMode;
   const targetPortalChainLabel =
-    targetPortalChain === "ethereum" ? "Ethereum" : "Base";
+    targetPortalChain === "ethereum"
+      ? "Ethereum"
+      : targetPortalChain === "polygon"
+        ? "Polygon"
+        : "Base";
   const selectableMinions = useMemo(
     () => minions.filter((minion) => minion.chain === activeChain),
     [activeChain, minions],
@@ -231,7 +237,8 @@ export const Avatar = memo(function Avatar({
   }, []);
 
   const requestBridgeGateUnlock = useCallback(async () => {
-    if (bridgeGateOpen || gateSwitching) {
+    const activeBridgeId = nearBridgeGateRef.current;
+    if (!activeBridgeId || openGates[activeBridgeId] || gateSwitching) {
       return;
     }
     if (!wallet) {
@@ -261,7 +268,7 @@ export const Avatar = memo(function Avatar({
           }, GATE_SWITCH_TIMEOUT_MS);
         }),
       ]);
-      onBridgeGateOpenChange(true);
+      onGateOpenChange((prev) => ({ ...prev, [activeBridgeId]: true }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setGateSwitchError(message);
@@ -269,9 +276,9 @@ export const Avatar = memo(function Avatar({
       setGateSwitching(false);
     }
   }, [
-    bridgeGateOpen,
+    openGates,
     gateSwitching,
-    onBridgeGateOpenChange,
+    onGateOpenChange,
     setOverlay,
     targetPortalChain,
     wallet,
@@ -409,6 +416,12 @@ export const Avatar = memo(function Avatar({
       }
       if (zoneOverlay) {
         event.preventDefault();
+        if (zoneOverlay === "prediction" && currentZoneIdRef.current) {
+          const match = currentZoneIdRef.current.match(/^prediction-(\d+)/);
+          if (match) {
+            setPredictionSelectedMarket(Number(match[1]));
+          }
+        }
         setOverlay(zoneOverlay);
         return;
       }
@@ -423,7 +436,7 @@ export const Avatar = memo(function Avatar({
     return () => {
       window.removeEventListener("keydown", onInteract);
     };
-  }, [nearbyTarget, requestBridgeGateUnlock, setOverlay]);
+  }, [nearbyTarget, requestBridgeGateUnlock, setOverlay, setPredictionSelectedMarket]);
 
   useEffect(() => {
     if (!avatarRef.current || hasSpawnedRef.current) {
@@ -547,26 +560,44 @@ export const Avatar = memo(function Avatar({
     const resolved = resolveMovement(
       previousX,
       previousZ,
-      Math.max(-128, Math.min(128, intendedX)),
-      Math.max(-128, Math.min(128, intendedZ)),
+      Math.max(-160, Math.min(160, intendedX)),
+      Math.max(-160, Math.min(160, intendedZ)),
     );
 
-    if (
-      !bridgeGateOpen &&
-      Math.abs(resolved.z - BRIDGE_CONFIG.walkway.z) <=
-        BRIDGE_GATE_CONFIG.blockHalfZ
-    ) {
+    // Gate blocking for all bridges
+    for (const bridge of BRIDGES) {
+      if (openGates[bridge.id]) {
+        continue;
+      }
+      const local = toBridgeLocal(bridge, resolved.x, resolved.z);
+      if (Math.abs(local.perp) > bridge.blockHalfPerp) {
+        continue;
+      }
+      // Block passage: clamp forward to the side the player's room is on
       if (
-        currentRoomId === "ethereum:main" &&
-        resolved.x > BRIDGE_CONFIG.position[0] - BRIDGE_GATE_CONFIG.blockHalfX
+        currentRoomId === bridge.negativeRoom &&
+        local.forward > -bridge.blockHalfForward
       ) {
-        resolved.x = BRIDGE_CONFIG.position[0] - BRIDGE_GATE_CONFIG.blockHalfX;
+        // Push back to negative side
+        const sin = Math.sin(bridge.gate.rotationY);
+        const cos = Math.cos(bridge.gate.rotationY);
+        const clampedForward = -bridge.blockHalfForward;
+        resolved.x =
+          bridge.gate.position[0] + clampedForward * sin + local.perp * cos;
+        resolved.z =
+          bridge.gate.position[2] + clampedForward * cos - local.perp * sin;
       }
       if (
-        currentRoomId === "base:main" &&
-        resolved.x < BRIDGE_CONFIG.position[0] + BRIDGE_GATE_CONFIG.blockHalfX
+        currentRoomId === bridge.positiveRoom &&
+        local.forward < bridge.blockHalfForward
       ) {
-        resolved.x = BRIDGE_CONFIG.position[0] + BRIDGE_GATE_CONFIG.blockHalfX;
+        const sin = Math.sin(bridge.gate.rotationY);
+        const cos = Math.cos(bridge.gate.rotationY);
+        const clampedForward = bridge.blockHalfForward;
+        resolved.x =
+          bridge.gate.position[0] + clampedForward * sin + local.perp * cos;
+        resolved.z =
+          bridge.gate.position[2] + clampedForward * cos - local.perp * sin;
       }
     }
 
@@ -608,37 +639,35 @@ export const Avatar = memo(function Avatar({
       setIsMoving(movingNow);
     }
 
-    if (
-      currentRoomId === "ethereum:main" &&
-      resolved.x >
-        BRIDGE_CONFIG.position[0] + BRIDGE_CONFIG.roomSwitch.xThresholdOffset &&
-      Math.abs(resolved.z - BRIDGE_CONFIG.walkway.z) <=
-        BRIDGE_CONFIG.roomSwitch.zHalfSpan
-    ) {
-      onBridgeGateOpenChange(false);
-      setGateSwitchError(undefined);
-      setRoom("base:main");
-      setOverlay(undefined);
-    }
-    if (
-      currentRoomId === "base:main" &&
-      resolved.x <
-        BRIDGE_CONFIG.position[0] - BRIDGE_CONFIG.roomSwitch.xThresholdOffset &&
-      Math.abs(resolved.z - BRIDGE_CONFIG.walkway.z) <=
-        BRIDGE_CONFIG.roomSwitch.zHalfSpan
-    ) {
-      onBridgeGateOpenChange(false);
-      setGateSwitchError(undefined);
-      setRoom("ethereum:main");
-      setOverlay(undefined);
+    // Room switching for all bridges
+    for (const bridge of BRIDGES) {
+      const local = toBridgeLocal(bridge, resolved.x, resolved.z);
+      if (Math.abs(local.perp) > bridge.roomSwitch.halfPerp) {
+        continue;
+      }
+      if (
+        currentRoomId === bridge.negativeRoom &&
+        local.forward > bridge.roomSwitch.thresholdForward
+      ) {
+        onGateOpenChange({});
+        setGateSwitchError(undefined);
+        setRoom(bridge.positiveRoom);
+        setOverlay(undefined);
+        break;
+      }
+      if (
+        currentRoomId === bridge.positiveRoom &&
+        local.forward < -bridge.roomSwitch.thresholdForward
+      ) {
+        onGateOpenChange({});
+        setGateSwitchError(undefined);
+        setRoom(bridge.negativeRoom);
+        setOverlay(undefined);
+        break;
+      }
     }
 
     const target = avatarRef.current.position;
-    const sideDerivedTargetChain: ChainSlug =
-      target.x <= BRIDGE_CONFIG.position[0] ? "base" : "ethereum";
-    if (sideDerivedTargetChain !== targetPortalChain) {
-      setTargetPortalChain(sideDerivedTargetChain);
-    }
     const targetCameraDistance = selectionMode
       ? SWAP_SELECT_CAMERA_DISTANCE
       : cameraDistanceRef.current;
@@ -677,20 +706,34 @@ export const Avatar = memo(function Avatar({
       return matchesRoom && insideX && insideZ;
     });
     currentZoneOverlayRef.current = getOverlayForZone(zone);
+    currentZoneIdRef.current = zone?.id;
 
-    const inBridgeGateInteractRange =
-      Math.abs(target.z - BRIDGE_GATE_CONFIG.position[2]) <=
-        BRIDGE_GATE_CONFIG.interactHalfZ &&
-      Math.abs(target.x - BRIDGE_GATE_CONFIG.position[0]) <=
-        BRIDGE_GATE_CONFIG.interactHalfX &&
-      ((currentRoomId === "ethereum:main" &&
-        target.x <= BRIDGE_GATE_CONFIG.position[0]) ||
-        (currentRoomId === "base:main" &&
-          target.x >= BRIDGE_GATE_CONFIG.position[0]));
-    if (nearBridgeGateRef.current !== inBridgeGateInteractRange) {
-      nearBridgeGateRef.current = inBridgeGateInteractRange;
-      setIsNearBridgeGate(inBridgeGateInteractRange);
-      if (!inBridgeGateInteractRange) {
+    // Near-gate detection for all bridges + derive target chain
+    let detectedNearBridge: BridgeId | undefined;
+    for (const bridge of BRIDGES) {
+      if (currentRoomId !== bridge.negativeRoom && currentRoomId !== bridge.positiveRoom) {
+        continue;
+      }
+      const local = toBridgeLocal(bridge, target.x, target.z);
+      const onNegativeSide = currentRoomId === bridge.negativeRoom;
+      const correctSide = onNegativeSide ? local.forward <= 0 : local.forward >= 0;
+      if (
+        correctSide &&
+        Math.abs(local.forward) <= bridge.interactHalfForward &&
+        Math.abs(local.perp) <= bridge.interactHalfPerp
+      ) {
+        detectedNearBridge = bridge.id;
+        const derivedChain = onNegativeSide ? bridge.negativeChain : bridge.positiveChain;
+        if (derivedChain !== targetPortalChain) {
+          setTargetPortalChain(derivedChain);
+        }
+        break;
+      }
+    }
+    if (nearBridgeGateRef.current !== detectedNearBridge) {
+      nearBridgeGateRef.current = detectedNearBridge;
+      setNearBridgeId(detectedNearBridge);
+      if (!detectedNearBridge) {
         setGateSwitchError(undefined);
       }
     }
@@ -735,7 +778,7 @@ export const Avatar = memo(function Avatar({
               : undefined
         }
       />
-      {labelsVisible && isNearBridgeGate ? (
+      {labelsVisible && nearBridgeId ? (
         <Html position={[0, 4.3, 0]} center>
           <div className="pointer-events-none border border-amber-200/35 bg-black/60 px-2 py-1 text-white shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
             <div className="flex items-center gap-2">
@@ -747,7 +790,7 @@ export const Avatar = memo(function Avatar({
               </span>
             </div>
             <p className="mt-0.5 text-[12px] font-medium leading-tight whitespace-nowrap">
-              {bridgeGateOpen
+              {openGates[nearBridgeId]
                 ? "Gate unlocked. Cross the bridge."
                 : gateSwitching
                   ? `Switching wallet to ${targetPortalChainLabel}...`
@@ -761,7 +804,7 @@ export const Avatar = memo(function Avatar({
           </div>
         </Html>
       ) : null}
-      {!isNearBridgeGate &&
+      {!nearBridgeId &&
       !currentZoneOverlay &&
       nearbyTarget &&
       labelsVisible ? (
@@ -781,7 +824,7 @@ export const Avatar = memo(function Avatar({
           </div>
         </Html>
       ) : null}
-      {!isNearBridgeGate && currentZoneOverlay && labelsVisible ? (
+      {!nearBridgeId && currentZoneOverlay && labelsVisible ? (
         <Html position={[0, 4.2, 0]} center>
           <div className="pointer-events-none border border-emerald-200/35 bg-black/60 px-2 py-1 text-white shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
             <div className="flex items-center gap-2">

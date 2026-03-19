@@ -12,8 +12,8 @@ import {
 import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { type Vector3Like, type WorldRoomId } from "@chainatlas/shared";
 import {
-  BRIDGE_CONFIG,
-  BRIDGE_GATE_CONFIG,
+  BRIDGES,
+  type BridgeId,
   getBuildingRotationY,
   LABEL_BUILDING_RANGE,
   LABEL_ISLAND_RANGE,
@@ -27,6 +27,7 @@ import {
 function FloatingLabel({
   distancePosition,
   label,
+  large,
   maxDistance,
   position,
   referencePosition,
@@ -34,6 +35,7 @@ function FloatingLabel({
 }: {
   distancePosition?: Vec3Tuple;
   label: string;
+  large?: boolean;
   maxDistance?: number;
   position: Vec3Tuple;
   referencePosition?: Vector3Like;
@@ -55,8 +57,14 @@ function FloatingLabel({
   }
 
   return (
-    <Html center distanceFactor={20} occlude position={position}>
-      <div className="pointer-events-none border-l-2 border-white/40 bg-black/20 px-2 py-0.5 text-[11px] font-semibold tracking-[0.02em] text-white/90 shadow-[0_1px_8px_rgba(0,0,0,0.45)] whitespace-nowrap">
+    <Html center distanceFactor={large ? 35 : 20} occlude position={position}>
+      <div
+        className={
+          large
+            ? "pointer-events-none border-l-2 border-white/50 bg-black/30 px-3 py-1 text-[15px] font-bold tracking-[0.04em] text-white shadow-[0_2px_12px_rgba(0,0,0,0.5)] whitespace-nowrap"
+            : "pointer-events-none border-l-2 border-white/40 bg-black/20 px-2 py-0.5 text-[11px] font-semibold tracking-[0.02em] text-white/90 shadow-[0_1px_8px_rgba(0,0,0,0.45)] whitespace-nowrap"
+        }
+      >
         {label}
       </div>
     </Html>
@@ -108,7 +116,17 @@ function ModelInstance({
   );
 }
 
-function GatePortal({ open }: { open: boolean }) {
+function GatePortal({
+  open,
+  position,
+  rotationY,
+  scale,
+}: {
+  open: boolean;
+  position: Vec3Tuple;
+  rotationY: number;
+  scale: Vec3Tuple;
+}) {
   const gltf = useGLTF(WORLD_ASSETS.gateGlbUrl);
   const clone = useMemo(
     () => cloneSkinned(gltf.scene) as Object3D,
@@ -246,9 +264,9 @@ function GatePortal({ open }: { open: boolean }) {
   return (
     <primitive
       object={clone}
-      position={BRIDGE_GATE_CONFIG.position}
-      rotation={[0, BRIDGE_GATE_CONFIG.rotationY, 0]}
-      scale={BRIDGE_GATE_CONFIG.scale}
+      position={position}
+      rotation={[0, rotationY, 0]}
+      scale={scale}
     />
   );
 }
@@ -347,13 +365,13 @@ export const ZonePads = memo(function ZonePads({
 });
 
 export const WorldProps = memo(function WorldProps({
-  bridgeGateOpen,
+  openGates,
   currentRoomId,
   labelsVisible,
   onGroundSurfaceChange,
   referencePosition,
 }: {
-  bridgeGateOpen: boolean;
+  openGates: Partial<Record<BridgeId, boolean>>;
   currentRoomId: WorldRoomId;
   labelsVisible: boolean;
   onGroundSurfaceChange(surfaceId: string, object?: Object3D): void;
@@ -361,45 +379,55 @@ export const WorldProps = memo(function WorldProps({
 }) {
   return (
     <group>
-      {WORLD_ASSETS.ISLAND_NODES.map((island) => (
+      {WORLD_ASSETS.ISLAND_NODES.map((island) => {
+        const modelUrl = island.modelUrl ?? WORLD_ASSETS.planeGlbUrl;
+        const s = island.scale ?? WORLD_ASSETS.ISLAND_SCALE;
+        return (
         <group key={island.label}>
           <ModelInstance
             onObjectChange={(object) =>
               onGroundSurfaceChange(`island:${island.label}`, object)
             }
             position={island.position}
-            rotation={[0, 0, 0]}
-            scale={[
-              WORLD_ASSETS.ISLAND_SCALE,
-              WORLD_ASSETS.ISLAND_SCALE,
-              WORLD_ASSETS.ISLAND_SCALE,
-            ]}
-            url={WORLD_ASSETS.planeGlbUrl}
+            rotation={[0, island.rotationY ?? 0, 0]}
+            scale={[s, s, s]}
+            url={modelUrl}
           />
           <FloatingLabel
             label={island.label}
+            large
             maxDistance={LABEL_ISLAND_RANGE}
             position={[
               island.position[0],
-              island.position[1] + 9.5,
+              island.position[1] + 16,
               island.position[2],
             ]}
             referencePosition={referencePosition}
             visible={labelsVisible}
           />
         </group>
-      ))}
+        );
+      })}
 
-      <ModelInstance
-        onObjectChange={(object) =>
-          onGroundSurfaceChange("bridge:main", object)
-        }
-        position={BRIDGE_CONFIG.position}
-        rotation={[0, BRIDGE_CONFIG.rotationY, 0]}
-        scale={BRIDGE_CONFIG.scale}
-        url={WORLD_ASSETS.bridgeGlbUrl}
-      />
-      <GatePortal open={bridgeGateOpen} />
+      {BRIDGES.map((bridge) => (
+        <group key={bridge.id}>
+          <ModelInstance
+            onObjectChange={(object) =>
+              onGroundSurfaceChange(`bridge:${bridge.id}`, object)
+            }
+            position={bridge.model.position}
+            rotation={[0, bridge.model.rotationY, 0]}
+            scale={bridge.model.scale}
+            url={WORLD_ASSETS.bridgeGlbUrl}
+          />
+          <GatePortal
+            open={openGates[bridge.id] ?? false}
+            position={bridge.gate.position}
+            rotationY={bridge.gate.rotationY}
+            scale={bridge.gate.scale}
+          />
+        </group>
+      ))}
 
       {WORLD_ASSETS.FUNCTIONAL_BUILDINGS.map((building) => (
         <group key={building.id}>

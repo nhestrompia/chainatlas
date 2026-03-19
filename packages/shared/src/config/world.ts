@@ -5,7 +5,7 @@ export const WORLD_CONFIG: WorldConfig = {
   label: "ChainAtlas",
   defaultRoomId: "ethereum:main",
   spawnPosition: { x: -58, y: 1.25, z: 0 },
-  availableRooms: ["ethereum:main", "base:main"],
+  availableRooms: ["ethereum:main", "base:main", "polygon:main"],
   interactionZones: [
     {
       id: "swap-building-ethereum",
@@ -62,6 +62,33 @@ export const WORLD_CONFIG: WorldConfig = {
       position: { x: 66, y: 0, z: 12 },
       size: { x: 12, y: 5, z: 12 },
       description: "Direct transfers on Base island.",
+    },
+    {
+      id: "prediction-0",
+      label: "",
+      kind: "prediction",
+      roomId: "polygon:main",
+      position: { x: -14, y: 0, z: 83 },
+      size: { x: 10, y: 6, z: 8 },
+      description: "Live prediction market gate.",
+    },
+    {
+      id: "prediction-1",
+      label: "",
+      kind: "prediction",
+      roomId: "polygon:main",
+      position: { x: 0, y: 0, z: 83 },
+      size: { x: 10, y: 6, z: 8 },
+      description: "Live prediction market gate.",
+    },
+    {
+      id: "prediction-2",
+      label: "",
+      kind: "prediction",
+      roomId: "polygon:main",
+      position: { x: 14, y: 0, z: 83 },
+      size: { x: 10, y: 6, z: 8 },
+      description: "Live prediction market gate.",
     },
   ],
 };

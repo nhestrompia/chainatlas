@@ -14,8 +14,10 @@ export const env = {
   partyHost: import.meta.env.VITE_PARTYKIT_HOST ?? "localhost:1999",
   ethereumRpcUrl: import.meta.env.VITE_ETHEREUM_RPC_URL ?? "",
   baseRpcUrl: import.meta.env.VITE_BASE_RPC_URL ?? "",
+  polygonRpcUrl: import.meta.env.VITE_POLYGON_RPC_URL ?? "",
   sepoliaRpcUrl: import.meta.env.VITE_SEPOLIA_RPC_URL ?? "",
   baseSepoliaRpcUrl: import.meta.env.VITE_BASE_SEPOLIA_RPC_URL ?? "",
+  polygonAmoyRpcUrl: import.meta.env.VITE_POLYGON_AMOY_RPC_URL ?? "",
   protocolAddressOverrides: {
     uniswapRouterEthereum: optionalEnvAddress(import.meta.env.VITE_UNISWAP_ROUTER_ETHEREUM),
     uniswapRouterBase: optionalEnvAddress(import.meta.env.VITE_UNISWAP_ROUTER_BASE),
