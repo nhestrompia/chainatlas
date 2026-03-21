@@ -109,10 +109,17 @@ function createRuntimeAddressOverrides(env: ApiDataEnv): RuntimeAddressOverrides
       "VITE_ACROSS_SPOKE_POOL_ETHEREUM",
     ),
     acrossSpokePoolBase: optionalAddressEnv(env, "ACROSS_SPOKE_POOL_BASE", "VITE_ACROSS_SPOKE_POOL_BASE"),
+    acrossSpokePoolPolygon: optionalAddressEnv(
+      env,
+      "ACROSS_SPOKE_POOL_POLYGON",
+      "VITE_ACROSS_SPOKE_POOL_POLYGON",
+    ),
     wrappedNativeEthereum: optionalAddressEnv(env, "WRAPPED_NATIVE_ETHEREUM", "VITE_WRAPPED_NATIVE_ETHEREUM"),
     wrappedNativeBase: optionalAddressEnv(env, "WRAPPED_NATIVE_BASE", "VITE_WRAPPED_NATIVE_BASE"),
+    wrappedNativePolygon: optionalAddressEnv(env, "WRAPPED_NATIVE_POLYGON", "VITE_WRAPPED_NATIVE_POLYGON"),
     usdcEthereum: optionalAddressEnv(env, "USDC_ETHEREUM", "VITE_USDC_ETHEREUM"),
     usdcBase: optionalAddressEnv(env, "USDC_BASE", "VITE_USDC_BASE"),
+    usdcPolygon: optionalAddressEnv(env, "USDC_POLYGON", "VITE_USDC_POLYGON"),
     usdtEthereum: optionalAddressEnv(env, "USDT_ETHEREUM", "VITE_USDT_ETHEREUM"),
     usdtBase: optionalAddressEnv(env, "USDT_BASE", "VITE_USDT_BASE"),
   };

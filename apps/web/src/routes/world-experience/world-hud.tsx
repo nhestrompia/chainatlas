@@ -147,7 +147,32 @@ export function WorldHud() {
   const immersiveActionPanel =
     overlays.activeOverlay === "swap" ||
     overlays.activeOverlay === "send" ||
-    overlays.activeOverlay === "bridge";
+    overlays.activeOverlay === "bridge" ||
+    overlays.activeOverlay === "prediction";
+  const panelWidthClass = useMemo(() => {
+    if (!immersiveActionPanel) {
+      return "max-w-[540px]";
+    }
+    if (overlays.activeOverlay === "swap") {
+      return overlays.swapStep === "details" ? "max-w-[440px]" : "max-w-[500px]";
+    }
+    if (overlays.activeOverlay === "send") {
+      return overlays.sendStep === "details" ? "max-w-[440px]" : "max-w-[500px]";
+    }
+    if (overlays.activeOverlay === "bridge") {
+      return overlays.bridgeStep === "details" ? "max-w-[440px]" : "max-w-[500px]";
+    }
+    if (overlays.activeOverlay === "prediction") {
+      return "max-w-[460px]";
+    }
+    return "max-w-[540px]";
+  }, [
+    immersiveActionPanel,
+    overlays.activeOverlay,
+    overlays.bridgeStep,
+    overlays.sendStep,
+    overlays.swapStep,
+  ]);
   const [shoutDraft, setShoutDraft] = useState("");
   const [shoutCooldownUntil, setShoutCooldownUntil] = useState(0);
   const [cooldownTick, setCooldownTick] = useState(0);
@@ -367,15 +392,8 @@ export function WorldHud() {
           <div
             className={cn(
               "pointer-events-auto relative w-full",
-              immersiveActionPanel
-                ? overlays.activeOverlay === "swap"
-                  ? overlays.swapStep === "details"
-                    ? "max-w-[440px]"
-                    : "max-w-[500px]"
-                  : overlays.sendStep === "details"
-                    ? "max-w-[440px]"
-                    : "max-w-[500px]"
-                : "max-w-[540px]",
+              panelWidthClass,
+              overlays.activeOverlay === "prediction" && "prediction-panel-enter",
             )}
             onClick={(event) => event.stopPropagation()}
           >

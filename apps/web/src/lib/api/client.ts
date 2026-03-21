@@ -38,6 +38,10 @@ export function patchBridgeJob(id: string, patch: Partial<BridgeJob>) {
   return browserBridgeJobStore.patchJob(id, patch);
 }
 
-export function fetchPredictionMarkets() {
-  return request<PredictionMarket[]>("/polymarket/top-markets");
+export function fetchPredictionMarkets(refreshKey?: string) {
+  const query =
+    typeof refreshKey === "string" && refreshKey.length > 0
+      ? `?refresh=${encodeURIComponent(refreshKey)}`
+      : "";
+  return request<PredictionMarket[]>(`/polymarket/top-markets${query}`);
 }

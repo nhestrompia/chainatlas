@@ -4,10 +4,9 @@ import type { PredictionMarket } from "@chainatlas/shared";
 import { Text } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useRef, useState } from "react";
-import { Group, Mesh, MeshStandardMaterial } from "three";
+import { Group, Mesh, MeshBasicMaterial, MeshStandardMaterial } from "three";
 import { PREDICTION_PLAZA, type Vec3Tuple } from "./config";
 
-const POLL_INTERVAL_MS = 30_000;
 const BUY_EFFECT_DURATION_MS = 1_200;
 const BUY_INTENT_EVENT = "prediction:buy-intent";
 const YES_COLOR = "#22c55e";
@@ -62,6 +61,10 @@ function GatePair({
   const topBeamMaterialRef = useRef<MeshStandardMaterial>(null);
   const yesPanelRef = useRef<Mesh>(null);
   const noPanelRef = useRef<Mesh>(null);
+  const yesPulseRingRef = useRef<Mesh>(null);
+  const noPulseRingRef = useRef<Mesh>(null);
+  const yesPulseMaterialRef = useRef<MeshBasicMaterial>(null);
+  const noPulseMaterialRef = useRef<MeshBasicMaterial>(null);
 
   const { gateWidth, gateHeight, gateDepth, gateSpacing } = PREDICTION_PLAZA;
   const halfOffset = (gateWidth + gateSpacing) / 2;
@@ -83,29 +86,51 @@ function GatePair({
     const boost = boostProgress * boostProgress;
     const yesBoost = buyEffect?.side === "yes" ? boost : boost * 0.35;
     const noBoost = buyEffect?.side === "no" ? boost : boost * 0.35;
+    const yesPulseStrength =
+      buyEffect?.side === "yes" ? boostProgress : boostProgress * 0.25;
+    const noPulseStrength =
+      buyEffect?.side === "no" ? boostProgress : boostProgress * 0.25;
 
     if (yesMaterialRef.current) {
       yesMaterialRef.current.emissiveIntensity =
-        (yesDominant ? pulse : dim) + yesBoost * 0.85;
+        (yesDominant ? pulse : dim) + yesBoost * 1.45;
     }
     if (noMaterialRef.current) {
       noMaterialRef.current.emissiveIntensity =
-        (yesDominant ? dim : pulse) + noBoost * 0.85;
+        (yesDominant ? dim : pulse) + noBoost * 1.45;
     }
     if (topBeamMaterialRef.current) {
       topBeamMaterialRef.current.emissiveIntensity =
-        0.12 + Math.sin(elapsed * 1.4) * 0.04 + boost * 0.2;
+        0.12 + Math.sin(elapsed * 1.4) * 0.04 + boost * 0.42;
     }
     if (yesPanelRef.current) {
-      const s = 1 + yesBoost * 0.07;
+      const s = 1 + yesBoost * 0.16;
       yesPanelRef.current.scale.set(s, s, 1);
     }
     if (noPanelRef.current) {
-      const s = 1 + noBoost * 0.07;
+      const s = 1 + noBoost * 0.16;
       noPanelRef.current.scale.set(s, s, 1);
     }
+    if (yesPulseRingRef.current) {
+      const wave = 1 - yesPulseStrength;
+      const s = 1 + wave * 1.35;
+      yesPulseRingRef.current.scale.set(s, s, 1);
+      yesPulseRingRef.current.position.z = gateDepth / 2 + 0.2 + wave * 0.12;
+    }
+    if (noPulseRingRef.current) {
+      const wave = 1 - noPulseStrength;
+      const s = 1 + wave * 1.35;
+      noPulseRingRef.current.scale.set(s, s, 1);
+      noPulseRingRef.current.position.z = gateDepth / 2 + 0.2 + wave * 0.12;
+    }
+    if (yesPulseMaterialRef.current) {
+      yesPulseMaterialRef.current.opacity = yesPulseStrength * 0.78;
+    }
+    if (noPulseMaterialRef.current) {
+      noPulseMaterialRef.current.opacity = noPulseStrength * 0.78;
+    }
     if (groupRef.current) {
-      groupRef.current.position.y = position[1] + boost * 0.08;
+      groupRef.current.position.y = position[1] + boost * 0.16;
     }
   });
 
@@ -142,7 +167,8 @@ function GatePair({
         anchorX="center"
         anchorY="bottom"
         color="#e2e8f0"
-        fontSize={0.5}
+        fontSize={0.58}
+        fontWeight="bold"
         maxWidth={12}
         position={[0, gateHeight + 0.72, 0]}
         textAlign="center"
@@ -155,7 +181,8 @@ function GatePair({
         anchorX="center"
         anchorY="top"
         color="#cbd5e1"
-        fontSize={0.3}
+        fontSize={0.34}
+        fontWeight="bold"
         position={[0, PLATFORM_Y + 0.03, gateDepth / 2 + 1.02]}
       >
         {`Vol ${volume}`}
@@ -206,11 +233,22 @@ function GatePair({
             polygonOffsetUnits={-1}
           />
         </mesh>
+        <mesh ref={yesPulseRingRef} position={[0, 0, gateDepth / 2 + 0.2]}>
+          <ringGeometry args={[gateWidth * 0.2, gateWidth * 0.46, 52]} />
+          <meshBasicMaterial
+            ref={yesPulseMaterialRef}
+            color={YES_EMISSIVE}
+            opacity={0}
+            toneMapped={false}
+            transparent
+          />
+        </mesh>
         <Text
           anchorX="center"
           anchorY="middle"
           color="#ecfdf5"
-          fontSize={0.54}
+          fontSize={0.64}
+          fontWeight="bold"
           position={[0, 0.92, gateDepth / 2 + 0.24]}
         >
           YES
@@ -219,7 +257,7 @@ function GatePair({
           anchorX="center"
           anchorY="middle"
           color="#ffffff"
-          fontSize={0.82}
+          fontSize={0.96}
           fontWeight="bold"
           position={[0, -0.08, gateDepth / 2 + 0.24]}
         >
@@ -272,11 +310,22 @@ function GatePair({
             polygonOffsetUnits={-1}
           />
         </mesh>
+        <mesh ref={noPulseRingRef} position={[0, 0, gateDepth / 2 + 0.2]}>
+          <ringGeometry args={[gateWidth * 0.2, gateWidth * 0.46, 52]} />
+          <meshBasicMaterial
+            ref={noPulseMaterialRef}
+            color={NO_EMISSIVE}
+            opacity={0}
+            toneMapped={false}
+            transparent
+          />
+        </mesh>
         <Text
           anchorX="center"
           anchorY="middle"
           color="#fff1f2"
-          fontSize={0.54}
+          fontSize={0.64}
+          fontWeight="bold"
           position={[0, 0.92, gateDepth / 2 + 0.24]}
         >
           NO
@@ -285,7 +334,7 @@ function GatePair({
           anchorX="center"
           anchorY="middle"
           color="#ffffff"
-          fontSize={0.82}
+          fontSize={0.96}
           fontWeight="bold"
           position={[0, -0.08, gateDepth / 2 + 0.24]}
         >
@@ -334,11 +383,10 @@ export function PredictionGates3D() {
 
   useEffect(() => {
     let disposed = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    const poll = async () => {
+    const refreshKey = String(Date.now());
+    const load = async () => {
       try {
-        const data = await fetchPredictionMarkets();
+        const data = await fetchPredictionMarkets(refreshKey);
         if (!disposed) {
           hydrate(data);
           setError(false);
@@ -348,16 +396,12 @@ export function PredictionGates3D() {
           setError(true);
         }
       }
-      if (!disposed) {
-        timer = setTimeout(poll, POLL_INTERVAL_MS);
-      }
     };
 
-    void poll();
+    void load();
 
     return () => {
       disposed = true;
-      if (timer) clearTimeout(timer);
     };
   }, [hydrate]);
 

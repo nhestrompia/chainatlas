@@ -48,7 +48,8 @@ export default {
       );
     }
 
-    const { pathname } = new URL(request.url);
+    const url = new URL(request.url);
+    const { pathname } = url;
     const dataService = createApiDataService(env);
 
     if (pathname === "/health") {
@@ -64,7 +65,9 @@ export default {
 
     if (pathname === "/polymarket/top-markets") {
       try {
-        const markets = await fetchTopPredictionMarkets();
+        const markets = await fetchTopPredictionMarkets({
+          bypassCache: Boolean(url.searchParams.get("refresh")),
+        });
         return jsonResponse(markets, { headers: corsHeaders });
       } catch (error) {
         console.error("[polymarket]", error);

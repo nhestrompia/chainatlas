@@ -34,6 +34,7 @@ import {
   CAMERA_ORBIT_SENSITIVITY,
   CAMERA_ZOOM_SENSITIVITY,
   GATE_SWITCH_TIMEOUT_MS,
+  PREDICTION_PLAZA,
   ROOM_SPAWNS,
   SCENE_INTERACTION_ZONES,
   SWAP_SELECT_CAMERA_DISTANCE,
@@ -52,6 +53,20 @@ import { AvatarBody, AvatarNameTag } from "./avatar-primitives";
 import { TokenMinions } from "./minions";
 
 const WORLD_UP = new Vector3(0, 1, 0);
+
+function getPredictionSideFromPosition(
+  playerX: number,
+  playerZ: number,
+  zoneX: number,
+  zoneZ: number,
+): "yes" | "no" {
+  const sin = Math.sin(PREDICTION_PLAZA.gateRotationY);
+  const cos = Math.cos(PREDICTION_PLAZA.gateRotationY);
+  const relX = playerX - zoneX;
+  const relZ = playerZ - zoneZ;
+  const localX = relX * cos - relZ * sin;
+  return localX <= 0 ? "yes" : "no";
+}
 
 export const Avatar = memo(function Avatar({
   avatarId,
@@ -417,9 +432,23 @@ export const Avatar = memo(function Avatar({
       if (zoneOverlay) {
         event.preventDefault();
         if (zoneOverlay === "prediction" && currentZoneIdRef.current) {
-          const match = currentZoneIdRef.current.match(/^prediction-(\d+)/);
+          const match = currentZoneIdRef.current.match(/^prediction-(\d+)$/);
           if (match) {
-            setPredictionSelectedMarket(Number(match[1]));
+            const marketIndex = Number(match[1]);
+            const zone = SCENE_INTERACTION_ZONES.find(
+              (item) => item.id === currentZoneIdRef.current,
+            );
+            const avatarPosition = avatarRef.current?.position;
+            const side =
+              zone && avatarPosition
+                ? getPredictionSideFromPosition(
+                    avatarPosition.x,
+                    avatarPosition.z,
+                    zone.position.x,
+                    zone.position.z,
+                  )
+                : "yes";
+            setPredictionSelectedMarket(marketIndex, side);
           }
         }
         setOverlay(zoneOverlay);

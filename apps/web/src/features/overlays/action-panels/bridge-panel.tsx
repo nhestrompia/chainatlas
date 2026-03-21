@@ -11,14 +11,14 @@ import { getBridgeRegistryEntry } from "@/lib/protocol-registry";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils/cn";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { useEffect, useMemo, useState } from "react";
 import { useWaitForTransactionReceipt } from "wagmi";
 import {
   ActionButton,
   Field,
   InlineError,
   Input,
+  Select,
   SubmittedTx,
   chainLabel,
   formatDisplayAmount,
@@ -61,7 +61,11 @@ function toBridgeErrorDisplay(rawMessage: string): BridgeErrorDisplay {
     lowered.includes("failed to fetch") ||
     lowered.includes("network request failed")
   ) {
-    const chainHint = lowered.includes("base") ? "Base" : "Ethereum";
+    const chainHint = lowered.includes("polygon")
+      ? "Polygon"
+      : lowered.includes("base")
+        ? "Base"
+        : "Ethereum";
     const hostHint = rpcHost ? ` (${rpcHost})` : "";
     return {
       key: compact,
@@ -220,9 +224,8 @@ export function BridgePanel() {
   const registry = runtimeConfig.protocolRegistry;
 
   const sourceChain = activeChain;
-  const destinationChain: ChainSlug =
-    activeChain === "ethereum" ? "base" : "ethereum";
   const [amount, setAmount] = useState("0.005");
+  const [destinationChain, setDestinationChain] = useState<ChainSlug>("polygon");
   const [submittedTx, setSubmittedTx] = useState<SubmittedTx>();
 
   const walletChainQuery = useQuery({
@@ -249,6 +252,13 @@ export function BridgePanel() {
   const bridgeEntry = useMemo(
     () => getBridgeRegistryEntry(registry),
     [registry],
+  );
+  const destinationChainOptions = useMemo(
+    () =>
+      (bridgeEntry?.chainSupport ?? []).filter(
+        (chain): chain is ChainSlug => chain !== sourceChain,
+      ),
+    [bridgeEntry?.chainSupport, sourceChain],
   );
   const bridgeableAssetKeys = useMemo(
     () =>
@@ -285,18 +295,22 @@ export function BridgePanel() {
       (asset) => toAssetKey(asset.chain, asset.address) === selectedMinion.assetKey,
     );
   }, [bridgeableAssets, selectedMinion]);
-  const pendingAcrossJobs = useMemo(
-    () =>
-      jobs.filter(
-        (job) =>
-          job.protocol === "across" &&
-          ["submitted", "settling", "quote_ready"].includes(job.status) &&
-          Boolean(job.originChainId) &&
-          Boolean(job.depositId),
-      ),
-    [jobs],
-  );
-  const observedStatusesRef = useRef<Map<string, string>>(new Map());
+  useEffect(() => {
+    if (!destinationChainOptions.length) {
+      return;
+    }
+
+    if (
+      destinationChain === sourceChain ||
+      !destinationChainOptions.includes(destinationChain)
+    ) {
+      const preferredDestination =
+        sourceChain === "ethereum" || sourceChain === "base"
+          ? destinationChainOptions.find((chain) => chain === "polygon")
+          : undefined;
+      setDestinationChain(preferredDestination ?? destinationChainOptions[0]!);
+    }
+  }, [destinationChain, destinationChainOptions, sourceChain]);
 
   useEffect(() => {
     if (!chainMinions.length) {
@@ -330,39 +344,13 @@ export function BridgePanel() {
     },
   });
 
-  useQuery({
-    enabled: Boolean(address) && pendingAcrossJobs.length > 0,
-    queryKey: [
-      "bridge-jobs-status-sync",
-      address,
-      pendingAcrossJobs.map((job) => `${job.id}:${job.status}:${job.updatedAt}`).join("|"),
-    ],
-    queryFn: async () => {
-      await Promise.allSettled(pendingAcrossJobs.map((job) => resumeBridge(job)));
-      const refreshedJobs = await fetchBridgeJobs(address!);
-      setPendingJobs(refreshedJobs);
-      return refreshedJobs;
-    },
-    refetchInterval: 15_000,
-    refetchIntervalInBackground: true,
-  });
-
-  useEffect(() => {
-    const nextStatuses = new Map<string, string>();
-    for (const job of jobs) {
-      const previousStatus = observedStatusesRef.current.get(job.id);
-      if (previousStatus && previousStatus !== "completed" && job.status === "completed") {
-        toast.success(`Bridge to ${chainLabel(job.destinationChain)} completed`);
-      }
-      nextStatuses.set(job.id, job.status);
-    }
-    observedStatusesRef.current = nextStatuses;
-  }, [jobs]);
-
   const startMutation = useMutation({
     mutationFn: async () => {
       if (!wallet) {
         throw new Error("No Privy wallet is connected");
+      }
+      if (!destinationChainOptions.length) {
+        throw new Error("Across has no destination chain available from this island");
       }
       if (sourceChain === destinationChain) {
         throw new Error("Source and destination chains must differ");
@@ -505,6 +493,7 @@ export function BridgePanel() {
     if (
       !bridgeBusy &&
       sourceChain !== destinationChain &&
+      destinationChainOptions.length > 0 &&
       amount &&
       selectedBridgeAsset
     ) {
@@ -595,15 +584,22 @@ export function BridgePanel() {
               disabled
               onChange={() => undefined}
               readOnly
-              value={sourceChain === "ethereum" ? "Ethereum" : "Base"}
+              value={chainLabel(sourceChain)}
             />
           </Field>
           <Field label="Destination chain">
-            <Input
-              disabled
-              onChange={() => undefined}
-              readOnly
-              value={destinationChain === "ethereum" ? "Ethereum" : "Base"}
+            <Select
+              disabled={bridgeBusy || destinationChainOptions.length === 0}
+              onChange={(value) => {
+                if (destinationChainOptions.includes(value as ChainSlug)) {
+                  setDestinationChain(value as ChainSlug);
+                }
+              }}
+              options={destinationChainOptions.map((chain) => ({
+                value: chain,
+                label: chainLabel(chain),
+              }))}
+              value={destinationChainOptions.includes(destinationChain) ? destinationChain : ""}
             />
           </Field>
         </div>
@@ -636,6 +632,7 @@ export function BridgePanel() {
           className="mt-1"
           disabled={
             bridgeBusy ||
+            destinationChainOptions.length === 0 ||
             sourceChain === destinationChain ||
             !amount ||
             !selectedBridgeAsset

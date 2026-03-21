@@ -280,6 +280,7 @@ export interface OverlaySlice {
   bridgeSelectedAssetKey?: string;
   bridgeStep?: "select" | "details";
   predictionSelectedMarketIndex?: number;
+  predictionSelectedSide?: "yes" | "no";
 }
 
 export interface PendingTransactionsSlice {

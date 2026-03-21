@@ -49,7 +49,7 @@ type AppState = {
   setPendingJobs(jobs: BridgeJob[]): void;
   setInteractionStatus(status: InteractionStatus): void;
   hydratePredictionMarkets(markets: PredictionMarket[]): void;
-  setPredictionSelectedMarket(index?: number): void;
+  setPredictionSelectedMarket(index?: number, side?: "yes" | "no"): void;
 };
 
 const roomToChain: Record<WorldRoomId, SessionSlice["activeChain"]> = {
@@ -111,6 +111,10 @@ export const useAppStore = create<AppState>((set) => ({
         predictionSelectedMarketIndex:
           activeOverlay === "prediction"
             ? state.overlays.predictionSelectedMarketIndex
+            : undefined,
+        predictionSelectedSide:
+          activeOverlay === "prediction"
+            ? state.overlays.predictionSelectedSide
             : undefined,
         swapSelectedAssetKey:
           activeOverlay === "swap" ? state.overlays.swapSelectedAssetKey : undefined,
@@ -369,11 +373,12 @@ export const useAppStore = create<AppState>((set) => ({
       },
     });
   },
-  setPredictionSelectedMarket(index) {
+  setPredictionSelectedMarket(index, side) {
     set((state) => ({
       overlays: {
         ...state.overlays,
         predictionSelectedMarketIndex: index,
+        predictionSelectedSide: side ?? (typeof index === "number" ? "yes" : undefined),
       },
     }));
   },

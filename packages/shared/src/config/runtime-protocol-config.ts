@@ -14,10 +14,13 @@ export type RuntimeAddressOverrides = Partial<{
   aerodromeFactoryBase: string;
   acrossSpokePoolEthereum: string;
   acrossSpokePoolBase: string;
+  acrossSpokePoolPolygon: string;
   wrappedNativeEthereum: string;
   wrappedNativeBase: string;
+  wrappedNativePolygon: string;
   usdcEthereum: string;
   usdcBase: string;
+  usdcPolygon: string;
   usdtEthereum: string;
   usdtBase: string;
 }>;
@@ -36,14 +39,17 @@ type RuntimeAddresses = {
   acrossSpokePool: {
     ethereum: string;
     base: string;
+    polygon: string;
   };
   wrappedNative: {
     ethereum: string;
     base: string;
+    polygon: string;
   };
   usdc: {
     ethereum: string;
     base: string;
+    polygon: string;
   };
   usdt: {
     ethereum?: string;
@@ -64,16 +70,19 @@ const DEFAULT_ADDRESSES: Record<RuntimeProfile, RuntimeAddresses> = {
       base: "0x420DD381b31aEf6683db6B902084cB0FFECe40Da",
     },
     acrossSpokePool: {
-      ethereum: "0xFBc81a18EcDa8E6A91275cFDF5FC6d91A7C5AE80",
-      base: "0x6C99671B249af73B2847D92123d823Cb3875E399",
+      ethereum: "0x5c7BCd6E7De5423a257D81B442095A1a6ced35C5",
+      base: "0x09aea4b2242abC8bb4BB78D537A67a245A7bEC64",
+      polygon: "0x9295ee1d8C5b022Be115A2AD3c30C72E34e7F096",
     },
     wrappedNative: {
       ethereum: "0xC02aaA39b223FE8D0a0e5C4F27eAD9083C756Cc2",
       base: "0x4200000000000000000000000000000000000006",
+      polygon: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
     },
     usdc: {
       ethereum: "0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
       base: "0x833589fCD6EDB6E08f4c7C32D4f71b54bdA02913",
+      polygon: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
     },
     usdt: {
       ethereum: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
@@ -94,14 +103,17 @@ const DEFAULT_ADDRESSES: Record<RuntimeProfile, RuntimeAddresses> = {
     acrossSpokePool: {
       ethereum: "0x5ef6C01E11889d86803e0B23e3cB3F9E9d97B662",
       base: "0x82B564983aE7274c86695917BBf8C99ECb6F0F8F",
+      polygon: "0xd08baaE74D6d2eAb1F3320B2E1a53eeb391ce8e5",
     },
     wrappedNative: {
       ethereum: "0xfff9976782d46CC05630D1f6eBAb18b2324d6B14",
       base: "0x4200000000000000000000000000000000000006",
+      polygon: "0x52eF3d68BaB452a294342DC3e5f464d7f610f72E",
     },
     usdc: {
       ethereum: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
       base: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      polygon: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
     },
     usdt: {
       ethereum: undefined,
@@ -206,6 +218,11 @@ function resolveRuntimeAddresses(
         defaults.acrossSpokePool.base,
         `${profile}.acrossSpokePool.base`,
       ),
+      polygon: resolveRequiredAddress(
+        overrides.acrossSpokePoolPolygon,
+        defaults.acrossSpokePool.polygon,
+        `${profile}.acrossSpokePool.polygon`,
+      ),
     },
     wrappedNative: {
       ethereum: resolveRequiredAddress(
@@ -218,6 +235,11 @@ function resolveRuntimeAddresses(
         defaults.wrappedNative.base,
         `${profile}.wrappedNative.base`,
       ),
+      polygon: resolveRequiredAddress(
+        overrides.wrappedNativePolygon,
+        defaults.wrappedNative.polygon,
+        `${profile}.wrappedNative.polygon`,
+      ),
     },
     usdc: {
       ethereum: resolveRequiredAddress(
@@ -229,6 +251,11 @@ function resolveRuntimeAddresses(
         overrides.usdcBase,
         defaults.usdc.base,
         `${profile}.usdc.base`,
+      ),
+      polygon: resolveRequiredAddress(
+        overrides.usdcPolygon,
+        defaults.usdc.polygon,
+        `${profile}.usdc.polygon`,
       ),
     },
     usdt: {
@@ -435,7 +462,7 @@ function getProtocolRegistry(
       kind: "bridge",
       profile,
       label: "Bridge",
-      chainSupport: ["ethereum", "base"],
+      chainSupport: ["ethereum", "base", "polygon"],
       supportedTokens: [
         { chain: "ethereum", address: "native", symbol: "ETH", decimals: 18 },
         { chain: "base", address: "native", symbol: "ETH", decimals: 18 },
@@ -451,6 +478,18 @@ function getProtocolRegistry(
           symbol: "USDC",
           decimals: 6,
         },
+        {
+          chain: "polygon",
+          address: addresses.wrappedNative.polygon,
+          symbol: "ETH",
+          decimals: 18,
+        },
+        {
+          chain: "polygon",
+          address: addresses.usdc.polygon,
+          symbol: "USDC",
+          decimals: 6,
+        },
       ],
       execution: {
         type: "bridge.across",
@@ -462,6 +501,7 @@ function getProtocolRegistry(
       contractAddresses: {
         ethereum: addresses.acrossSpokePool.ethereum,
         base: addresses.acrossSpokePool.base,
+        polygon: addresses.acrossSpokePool.polygon,
       },
     },
   ];
@@ -501,7 +541,7 @@ export function getRuntimeProtocolConfig(
         slug: "polygon",
         chainId: CHAIN_IDS[profile].polygon,
         label: profile === "testnet" ? "Amoy" : "Polygon",
-        wrappedNativeAddress: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
+        wrappedNativeAddress: addresses.wrappedNative.polygon,
       },
     },
     swapRoutes,
@@ -515,6 +555,7 @@ export function getRuntimeProtocolConfig(
       spokePoolAddresses: {
         ethereum: addresses.acrossSpokePool.ethereum,
         base: addresses.acrossSpokePool.base,
+        polygon: addresses.acrossSpokePool.polygon,
       },
       supportedAssets: [
         { chain: "ethereum", address: "native", symbol: "ETH", decimals: 18 },
@@ -528,6 +569,18 @@ export function getRuntimeProtocolConfig(
         {
           chain: "base",
           address: addresses.usdc.base,
+          symbol: "USDC",
+          decimals: 6,
+        },
+        {
+          chain: "polygon",
+          address: addresses.wrappedNative.polygon,
+          symbol: "ETH",
+          decimals: 18,
+        },
+        {
+          chain: "polygon",
+          address: addresses.usdc.polygon,
           symbol: "USDC",
           decimals: 6,
         },

@@ -7,6 +7,7 @@ import {
   resolveEnsName,
   usePrivyWallet,
 } from "@/features/wallet/use-privy-wallet";
+import { resumeBridge } from "@/features/transactions/bridge";
 import { fetchBridgeJobs, fetchPortfolio } from "@/lib/api/client";
 import { runtimeConfig } from "@/lib/config/runtime";
 import { deriveMinions } from "@/lib/minions";
@@ -17,7 +18,8 @@ import {
   type PortfolioAsset,
 } from "@chainatlas/shared";
 import { useQuery } from "@tanstack/react-query";
-import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   erc20Abi,
   formatUnits,
@@ -65,12 +67,14 @@ export function WorldExperience() {
   const hydratePortfolio = useAppStore((state) => state.hydratePortfolio);
   const hydrateMinions = useAppStore((state) => state.hydrateMinions);
   const setPendingJobs = useAppStore((state) => state.setPendingJobs);
+  const jobs = useAppStore((state) => state.pendingTransactions.jobs);
   const clearLocalPresence = useAppStore((state) => state.clearLocalPresence);
   const localPresence = useAppStore((state) => state.presence.local);
   const remotePresence = useAppStore((state) => state.presence.remote);
   const activeChain = useAppStore((state) => state.session.activeChain);
   const setNearbyTarget = useAppStore((state) => state.setNearbyTarget);
   const nearbyTarget = useAppStore((state) => state.overlays.nearbyTarget);
+  const observedBridgeStatusesRef = useRef<Map<string, string>>(new Map());
 
   const ensNameQuery = useQuery({
     enabled: Boolean(address),
@@ -220,6 +224,17 @@ export function WorldExperience() {
         : apiChainAssets,
     [apiChainAssets, shouldUseClientFallback, wagmiAssets, walletChainAssets],
   );
+  const pendingAcrossJobs = useMemo(
+    () =>
+      jobs.filter(
+        (job) =>
+          job.protocol === "across" &&
+          ["submitted", "settling", "quote_ready"].includes(job.status) &&
+          Boolean(job.originChainId) &&
+          Boolean(job.depositId),
+      ),
+    [jobs],
+  );
 
   useQuery({
     enabled: Boolean(address),
@@ -230,6 +245,34 @@ export function WorldExperience() {
       return jobs;
     },
   });
+  useQuery({
+    enabled: Boolean(address) && pendingAcrossJobs.length > 0,
+    queryKey: [
+      "bridge-jobs-status-sync",
+      address,
+      pendingAcrossJobs.map((job) => `${job.id}:${job.status}:${job.updatedAt}`).join("|"),
+    ],
+    queryFn: async () => {
+      await Promise.allSettled(pendingAcrossJobs.map((job) => resumeBridge(job)));
+      const refreshedJobs = await fetchBridgeJobs(address!);
+      setPendingJobs(refreshedJobs);
+      return refreshedJobs;
+    },
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: true,
+  });
+
+  useEffect(() => {
+    const nextStatuses = new Map<string, string>();
+    for (const job of jobs) {
+      const previousStatus = observedBridgeStatusesRef.current.get(job.id);
+      if (previousStatus && previousStatus !== "completed" && job.status === "completed") {
+        toast.success(`Bridge to ${runtimeConfig.chains[job.destinationChain].label} completed`);
+      }
+      nextStatuses.set(job.id, job.status);
+    }
+    observedBridgeStatusesRef.current = nextStatuses;
+  }, [jobs]);
 
   useEffect(() => {
     setWallet(address);

@@ -25,7 +25,9 @@ function mapAcrossStatus(status?: string): BridgeJob["status"] {
 }
 
 export async function startBridge(input: TransactionIntent & { wallet: ConnectedPrivyWallet }) {
-  const destinationChain = input.destinationChain ?? "base";
+  const destinationChain =
+    input.destinationChain ??
+    (input.chain === "ethereum" || input.chain === "base" ? "polygon" : "base");
   if (!input.wallet.address) {
     throw new Error("Privy wallet account is unavailable");
   }

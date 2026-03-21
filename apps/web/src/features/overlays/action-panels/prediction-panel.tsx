@@ -1,15 +1,16 @@
-import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { useAppStore } from "@/lib/store/app-store";
 import {
   executePredictionOrder,
   fetchPredictionOrderStatus,
 } from "@/features/transactions/prediction";
 import { usePrivyWallet } from "@/features/wallet/use-privy-wallet";
+import { useAppStore } from "@/lib/store/app-store";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { ActionButton, Field, Input, PanelFrame } from "./shared";
 
 const BUY_INTENT_EVENT = "prediction:buy-intent";
+const MIN_MARKETABLE_BUY_USDC = 1;
 const TERMINAL_ORDER_STATUSES = new Set([
   "matched",
   "filled",
@@ -37,25 +38,36 @@ function formatVolume(value: number): string {
 
 export function PredictionPanel() {
   const { wallet } = usePrivyWallet();
-  const index = useAppStore((state) => state.overlays.predictionSelectedMarketIndex);
-  const market = useAppStore(
-    (state) =>
-      typeof index === "number"
-        ? state.predictionMarkets.markets[index]
-        : undefined,
+  const index = useAppStore(
+    (state) => state.overlays.predictionSelectedMarketIndex,
   );
-  const [side, setSide] = useState<"yes" | "no">("yes");
+  const selectedSide = useAppStore(
+    (state) => state.overlays.predictionSelectedSide,
+  );
+  const market = useAppStore((state) =>
+    typeof index === "number"
+      ? state.predictionMarkets.markets[index]
+      : undefined,
+  );
+  const [side, setSide] = useState<"yes" | "no">(selectedSide ?? "yes");
   const [amount, setAmount] = useState("25");
   const [lastOrderId, setLastOrderId] = useState<string>();
   const [lastOrderStatus, setLastOrderStatus] = useState<string>();
+
+  useEffect(() => {
+    setSide(selectedSide ?? "yes");
+  }, [index, selectedSide]);
+
   const normalizedAmount = amount.replace(",", ".").trim();
   const parsedAmount = Number(normalizedAmount);
-  const amountIsValid = Number.isFinite(parsedAmount) && parsedAmount > 0;
+  const amountIsValid =
+    Number.isFinite(parsedAmount) && parsedAmount >= MIN_MARKETABLE_BUY_USDC;
   const selectedPrice = market
     ? side === "yes"
       ? market.yesPrice
       : market.noPrice
     : 0;
+  const showingYes = side === "yes";
   const yesWidth = Math.max((market?.yesPrice ?? 0) * 100, 2);
   const noWidth = Math.max((market?.noPrice ?? 0) * 100, 2);
 
@@ -63,6 +75,19 @@ export function PredictionPanel() {
     amountIsValid && selectedPrice > 0 ? parsedAmount / selectedPrice : 0;
   const marketTradable = Boolean(market?.yesTokenId && market?.noTokenId);
   const tradeMutation = useMutation({
+    onMutate: () => {
+      if (typeof index === "number") {
+        window.dispatchEvent(
+          new CustomEvent(BUY_INTENT_EVENT, {
+            detail: {
+              marketIndex: index,
+              side,
+              amount: parsedAmount,
+            },
+          }),
+        );
+      }
+    },
     mutationFn: async () => {
       if (!market) {
         throw new Error("No market selected.");
@@ -83,17 +108,6 @@ export function PredictionPanel() {
     onSuccess: (receipt) => {
       setLastOrderId(receipt.orderId);
       setLastOrderStatus(receipt.status);
-      if (typeof index === "number") {
-        window.dispatchEvent(
-          new CustomEvent(BUY_INTENT_EVENT, {
-            detail: {
-              marketIndex: index,
-              side,
-              amount: parsedAmount,
-            },
-          }),
-        );
-      }
       toast.success(
         receipt.orderId
           ? `Order submitted (${receipt.orderId.slice(0, 10)}...)`
@@ -151,43 +165,49 @@ export function PredictionPanel() {
       subtitle="Polymarket — Live Probabilities"
     >
       <div className="space-y-4">
-        <p className="text-base font-semibold text-cyan-50 text-balance">
+        <p className="text-xl font-medium leading-tight text-cyan-50 text-balance">
           {market.question}
         </p>
 
         <div className="space-y-2">
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-medium text-green-400">YES</span>
-              <span className="font-bold text-green-300">
-                {formatPercent(market.yesPrice)}
-              </span>
+          {showingYes ? (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-base">
+                <span className="font-extrabold tracking-[0.02em] text-green-400">
+                  YES
+                </span>
+                <span className="text-xl font-black text-green-300">
+                  {formatPercent(market.yesPrice)}
+                </span>
+              </div>
+              <div className="h-3 overflow-hidden rounded-full bg-green-950/50">
+                <div
+                  className="h-full rounded-full bg-green-500 transition-all duration-700"
+                  style={{ width: `${yesWidth}%` }}
+                />
+              </div>
             </div>
-            <div className="h-3 overflow-hidden rounded-full bg-green-950/50">
-              <div
-                className="h-full rounded-full bg-green-500 transition-all duration-700"
-                style={{ width: `${yesWidth}%` }}
-              />
+          ) : (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-base">
+                <span className="font-extrabold tracking-[0.02em] text-red-400">
+                  NO
+                </span>
+                <span className="text-xl font-black text-red-300">
+                  {formatPercent(market.noPrice)}
+                </span>
+              </div>
+              <div className="h-3 overflow-hidden rounded-full bg-red-950/50">
+                <div
+                  className="h-full rounded-full bg-red-500 transition-all duration-700"
+                  style={{ width: `${noWidth}%` }}
+                />
+              </div>
             </div>
-          </div>
-
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-medium text-red-400">NO</span>
-              <span className="font-bold text-red-300">
-                {formatPercent(market.noPrice)}
-              </span>
-            </div>
-            <div className="h-3 overflow-hidden rounded-full bg-red-950/50">
-              <div
-                className="h-full rounded-full bg-red-500 transition-all duration-700"
-                style={{ width: `${noWidth}%` }}
-              />
-            </div>
-          </div>
+          )}
         </div>
 
-        <div className="flex items-center justify-between border-t border-cyan-100/10 pt-3 text-xs text-cyan-100/60">
+        <div className="flex items-center justify-between border-t border-cyan-100/10 pt-3 text-sm font-semibold text-cyan-100/80">
           <span>Volume: {formatVolume(market.volume)}</span>
         </div>
 
@@ -198,7 +218,7 @@ export function PredictionPanel() {
 
           <div className="grid grid-cols-2 gap-2">
             <button
-              className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+              className={`rounded-lg border px-3 py-2.5 text-base font-extrabold transition-colors ${
                 side === "yes"
                   ? "border-green-300/70 bg-green-400/20 text-green-100"
                   : "border-cyan-100/25 bg-[#0d1d29] text-cyan-100/75 hover:border-cyan-100/40"
@@ -209,7 +229,7 @@ export function PredictionPanel() {
               Buy YES
             </button>
             <button
-              className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+              className={`rounded-lg border px-3 py-2.5 text-base font-extrabold transition-colors ${
                 side === "no"
                   ? "border-red-300/70 bg-red-400/20 text-red-100"
                   : "border-cyan-100/25 bg-[#0d1d29] text-cyan-100/75 hover:border-cyan-100/40"
@@ -225,36 +245,44 @@ export function PredictionPanel() {
             <Input
               inputMode="decimal"
               onChange={setAmount}
-              placeholder="e.g. 25"
+              placeholder="min 1.00"
               type="number"
               value={amount}
             />
           </Field>
 
-          <div className="rounded-lg border border-cyan-100/20 bg-[#0d1d29] px-3 py-2 text-xs text-cyan-100/75">
+          {!amountIsValid ? (
+            <p className="text-xs text-amber-100/85">
+              Minimum marketable buy size is $1 USDC.
+            </p>
+          ) : null}
+
+          <div className="rounded-lg border border-cyan-100/20 bg-[#0d1d29] px-3 py-2 text-sm text-cyan-100/85">
             <p>
               Price:{" "}
-              <span className="font-semibold text-cyan-50">
+              <span className="text-base font-extrabold text-cyan-50">
                 {formatPercent(selectedPrice)}
               </span>
             </p>
             <p className="mt-0.5">
               Estimated shares:{" "}
-              <span className="font-semibold text-cyan-50">
+              <span className="text-base font-extrabold text-cyan-50">
                 {amountIsValid ? estimatedShares.toFixed(2) : "--"}
               </span>
             </p>
           </div>
 
           <ActionButton
-            disabled={!amountIsValid || !marketTradable || tradeMutation.isPending}
+            disabled={
+              !amountIsValid || !marketTradable || tradeMutation.isPending
+            }
             onClick={submitTrade}
           >
             <span className="block text-xs text-cyan-100/70">Execution</span>
             <span className="mt-0.5 block text-base">
               {tradeMutation.isPending
                 ? "Submitting order..."
-                : `Buy ${side.toUpperCase()} in-app`}
+                : `Buy ${side.toUpperCase()}`}
             </span>
           </ActionButton>
 
@@ -274,7 +302,8 @@ export function PredictionPanel() {
 
           {!marketTradable ? (
             <p className="text-xs text-amber-100/85">
-              Trading metadata is still loading for this market. Please retry in a moment.
+              Trading metadata is still loading for this market. Please retry in
+              a moment.
             </p>
           ) : null}
 
@@ -296,7 +325,7 @@ export function PredictionPanel() {
             rel="noopener noreferrer"
             target="_blank"
           >
-            Open on Polymarket (optional)
+            Open on Polymarket
           </a>
         </div>
       </div>

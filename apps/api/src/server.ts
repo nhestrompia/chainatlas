@@ -47,9 +47,12 @@ app.get("/protocol-registry", async (_request, reply) => {
   return reply.send(payload);
 });
 
-app.get("/polymarket/top-markets", async (_request, reply) => {
+app.get("/polymarket/top-markets", async (request, reply) => {
   try {
-    const markets = await fetchTopPredictionMarkets();
+    const query = request.query as { refresh?: string };
+    const markets = await fetchTopPredictionMarkets({
+      bypassCache: typeof query.refresh === "string" && query.refresh.length > 0,
+    });
     return reply.send(markets);
   } catch (error) {
     console.error("[polymarket]", error);

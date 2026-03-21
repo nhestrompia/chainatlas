@@ -1,9 +1,14 @@
 import type { PredictionMarket } from "@chainatlas/shared";
 
+const GAMMA_FETCH_LIMIT = 200;
 const GAMMA_API_URL =
-  "https://gamma-api.polymarket.com/markets?closed=false&order=volume&ascending=false&limit=3";
+  `https://gamma-api.polymarket.com/markets?closed=false&order=volume&ascending=false&limit=${GAMMA_FETCH_LIMIT}`;
 const CACHE_TTL_MS = 30_000;
 const FETCH_TIMEOUT_MS = 8_000;
+const DISPLAY_MARKET_COUNT = 3;
+const ROTATION_POOL_SIZE = 20;
+const MIN_MARKET_VOLUME_USD = 500_000;
+const MIN_TIME_TO_CLOSE_MS = 60 * 60 * 1000;
 
 let cachedMarkets: PredictionMarket[] | undefined;
 let cachedAt = 0;
@@ -75,9 +80,16 @@ async function fetchWithTlsFallback(
 interface GammaMarket {
   id: string;
   question: string;
+  outcomes?: string | string[];
+  outcome_names?: string | string[];
+  outcomeNames?: string | string[];
+  outcome_labels?: string | string[];
+  outcomeLabels?: string | string[];
   outcomePrices: string | string[];
   volume: string | number;
   volume24hr?: string | number;
+  volume_num?: string | number;
+  liquidity?: string | number;
   slug: string;
   clobTokenIds?: string | string[];
   clob_token_ids?: string | string[];
@@ -88,6 +100,40 @@ interface GammaMarket {
   tick_size?: string | number;
   negRisk?: boolean | string;
   neg_risk?: boolean | string;
+  endDate?: string | number;
+  end_date?: string | number;
+  endDateIso?: string;
+  end_date_iso?: string;
+  closeDate?: string | number;
+  close_date?: string | number;
+  resolutionDate?: string | number;
+  resolution_date?: string | number;
+}
+
+function normalizeOutcomeLabel(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z]/g, "");
+}
+
+function resolveYesNoIndexes(raw: GammaMarket) {
+  const labels = parseStringArray(
+    raw.outcomes ??
+      raw.outcomeNames ??
+      raw.outcome_names ??
+      raw.outcomeLabels ??
+      raw.outcome_labels,
+  );
+  if (labels.length !== 2) {
+    return null;
+  }
+
+  const normalized = labels.map((label) => normalizeOutcomeLabel(label));
+  const yesIndex = normalized.findIndex((label) => label === "yes");
+  const noIndex = normalized.findIndex((label) => label === "no");
+  if (yesIndex < 0 || noIndex < 0) {
+    return null;
+  }
+
+  return { noIndex, yesIndex };
 }
 
 function parseStringArray(value: unknown): string[] {
@@ -150,43 +196,131 @@ function parseTickSize(value: unknown): string | undefined {
   return normalized;
 }
 
-function normalizeMarket(raw: GammaMarket, now: number): PredictionMarket | null {
-  const prices = parseStringArray(raw.outcomePrices);
+function parseVolume(value: unknown): number {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === "string") {
+    const cleaned = value.trim().replace(/,/g, "");
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
 
-  const yesPrice = Number(prices[0]);
-  const noPrice = Number(prices[1]);
+function selectRandomMarkets(pool: PredictionMarket[], count: number) {
+  if (pool.length <= count) {
+    return pool;
+  }
+
+  const shuffled = [...pool];
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
+  }
+  return shuffled.slice(0, count);
+}
+
+function parseDateMs(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value <= 0) {
+      return undefined;
+    }
+    return value < 10_000_000_000 ? value * 1000 : value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+
+    const numeric = Number(trimmed);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric < 10_000_000_000 ? numeric * 1000 : numeric;
+    }
+
+    const parsed = Date.parse(trimmed);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function resolveCloseTimestampMs(raw: GammaMarket): number | undefined {
+  return (
+    parseDateMs(raw.endDateIso) ??
+    parseDateMs(raw.end_date_iso) ??
+    parseDateMs(raw.endDate) ??
+    parseDateMs(raw.end_date) ??
+    parseDateMs(raw.closeDate) ??
+    parseDateMs(raw.close_date) ??
+    parseDateMs(raw.resolutionDate) ??
+    parseDateMs(raw.resolution_date)
+  );
+}
+
+function normalizeMarket(raw: GammaMarket, now: number): PredictionMarket | null {
+  const indexes = resolveYesNoIndexes(raw);
+  if (!indexes) {
+    return null;
+  }
+
+  const prices = parseStringArray(raw.outcomePrices);
+  const yesPrice = Number(prices[indexes.yesIndex]);
+  const noPrice = Number(prices[indexes.noIndex]);
 
   if (!Number.isFinite(yesPrice) || !Number.isFinite(noPrice)) {
     return null;
   }
   const tokenIds = parseStringArray(raw.clobTokenIds ?? raw.clob_token_ids);
+  const yesTokenId = tokenIds[indexes.yesIndex];
+  const noTokenId = tokenIds[indexes.noIndex];
+  if (!yesTokenId || !noTokenId) {
+    return null;
+  }
   const conditionId = String(raw.conditionId ?? raw.condition_id ?? "").trim();
   const tickSize =
     parseTickSize(raw.minimum_tick_size) ??
     parseTickSize(raw.min_tick_size) ??
     parseTickSize(raw.tick_size);
   const negRisk = parseBoolean(raw.negRisk ?? raw.neg_risk);
+  const closeTimestampMs = resolveCloseTimestampMs(raw);
+  if (
+    typeof closeTimestampMs === "number" &&
+    closeTimestampMs - now < MIN_TIME_TO_CLOSE_MS
+  ) {
+    return null;
+  }
+  const volume = Math.max(
+    parseVolume(raw.volume),
+    parseVolume(raw.volume24hr),
+    parseVolume(raw.volume_num),
+  );
+  if (volume < MIN_MARKET_VOLUME_USD) {
+    return null;
+  }
 
   return {
     id: String(raw.id),
     question: String(raw.question),
     yesPrice,
     noPrice,
-    volume: Number(raw.volume) || 0,
+    volume,
     slug: String(raw.slug ?? raw.id),
     conditionId: conditionId.length > 0 ? conditionId : undefined,
-    yesTokenId: tokenIds[0],
-    noTokenId: tokenIds[1],
+    yesTokenId,
+    noTokenId,
     tickSize,
     negRisk,
     updatedAt: now,
   };
 }
 
-export async function fetchTopPredictionMarkets(): Promise<PredictionMarket[]> {
+export async function fetchTopPredictionMarkets(options?: {
+  bypassCache?: boolean;
+}): Promise<PredictionMarket[]> {
   const now = Date.now();
 
-  if (cachedMarkets && now - cachedAt < CACHE_TTL_MS) {
+  if (!options?.bypassCache && cachedMarkets && now - cachedAt < CACHE_TTL_MS) {
     return cachedMarkets;
   }
 
@@ -201,14 +335,20 @@ export async function fetchTopPredictionMarkets(): Promise<PredictionMarket[]> {
     }
 
     const data: GammaMarket[] = await response.json();
-    const markets = data
+    const normalizedMarkets = data
       .map((item) => normalizeMarket(item, now))
-      .filter((m): m is PredictionMarket => m !== null)
-      .slice(0, 3);
+      .filter((m): m is PredictionMarket => m !== null);
+    const topByVolumePool = normalizedMarkets
+      .sort((a, b) => b.volume - a.volume)
+      .slice(0, ROTATION_POOL_SIZE);
+    const selectedMarkets = selectRandomMarkets(
+      topByVolumePool,
+      DISPLAY_MARKET_COUNT,
+    );
 
-    cachedMarkets = markets;
+    cachedMarkets = selectedMarkets;
     cachedAt = now;
-    return markets;
+    return selectedMarkets;
   } catch (error) {
     console.error("[polymarket] fetch error:", error instanceof Error ? error.message : error);
     if (cachedMarkets) {
