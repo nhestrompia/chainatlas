@@ -22,6 +22,10 @@ export type InteractionStatus =
   | "swapping"
   | "bridging";
 
+export type MerchantMode = "clone" | "mobile";
+export type MerchantListingSource = "chainatlas" | "opensea";
+export type MerchantStatus = "active" | "sold" | "cancelled" | "expired";
+
 export type BridgeJobStatus =
   | "idle"
   | "quote_ready"
@@ -123,6 +127,37 @@ export interface PresenceSnapshot {
 export interface PresenceDelta {
   connectionId: string;
   snapshot: PresenceSnapshot;
+}
+
+export interface MerchantListing {
+  listingId: string;
+  orderHash?: string;
+  source: MerchantListingSource;
+  status: MerchantStatus;
+  seller: string;
+  chain: ChainSlug;
+  nftContract: string;
+  tokenId: string;
+  collectionName: string;
+  tokenName: string;
+  imageUrl?: string;
+  priceWei: string;
+  currencySymbol: "ETH";
+  expiry?: number;
+  createdAt: number;
+  updatedAt: number;
+  seaportOrder?: Record<string, unknown>;
+  fulfillmentData?: Record<string, unknown>;
+}
+
+export interface MerchantShop {
+  seller: string;
+  chain: ChainSlug;
+  roomId: WorldRoomId;
+  mode: MerchantMode;
+  anchor: Vector3Like;
+  updatedAt: number;
+  listings: MerchantListing[];
 }
 
 export interface TransactionIntent {
@@ -271,8 +306,13 @@ export interface OverlaySlice {
     | "jobs"
     | "chat"
     | "player"
+    | "merchant"
     | "prediction";
   nearbyTarget?: string;
+  nearbyMerchantSeller?: string;
+  merchantTab?: "browse" | "my-listings" | "import" | "create";
+  merchantMode?: MerchantMode;
+  merchantSelectedListingId?: string;
   swapSelectedAssetKey?: string;
   swapStep?: "select" | "details";
   sendSelectedAssetKey?: string;

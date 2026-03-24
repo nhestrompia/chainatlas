@@ -96,6 +96,41 @@ export const presenceDeltaSchema = z.object({
   snapshot: presenceSnapshotSchema,
 });
 
+export const merchantModeSchema = z.enum(["clone", "mobile"]);
+export const merchantListingSourceSchema = z.enum(["chainatlas", "opensea"]);
+export const merchantStatusSchema = z.enum(["active", "sold", "cancelled", "expired"]);
+
+export const merchantListingSchema = z.object({
+  listingId: z.string().min(1),
+  orderHash: z.string().regex(/^0x[a-fA-F0-9]+$/).optional(),
+  source: merchantListingSourceSchema,
+  status: merchantStatusSchema,
+  seller: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  chain: chainSlugSchema,
+  nftContract: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  tokenId: z.string().min(1),
+  collectionName: z.string().min(1),
+  tokenName: z.string().min(1),
+  imageUrl: z.string().url().optional(),
+  priceWei: z.string().min(1),
+  currencySymbol: z.literal("ETH"),
+  expiry: z.number().int().positive().optional(),
+  createdAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+  seaportOrder: z.record(z.unknown()).optional(),
+  fulfillmentData: z.record(z.unknown()).optional(),
+});
+
+export const merchantShopSchema = z.object({
+  seller: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  chain: chainSlugSchema,
+  roomId: worldRoomIdSchema,
+  mode: merchantModeSchema,
+  anchor: vector3Schema,
+  updatedAt: z.number().int().nonnegative(),
+  listings: z.array(merchantListingSchema).max(5),
+});
+
 export const transactionIntentSchema = z.object({
   kind: z.enum(["send-native", "send-erc20", "swap", "bridge"]),
   chain: chainSlugSchema,

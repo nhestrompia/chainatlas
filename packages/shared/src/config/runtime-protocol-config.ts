@@ -135,7 +135,7 @@ const CHAIN_IDS: Record<RuntimeProfile, Record<ChainSlug, number>> = {
   },
 };
 
-const DEFAULT_PROFILE: RuntimeProfile = "mainnet";
+const DEFAULT_PROFILE: RuntimeProfile = "testnet";
 const INTEGRATOR_ID_ENV_KEY = "VITE_ACROSS_INTEGRATOR_ID";
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 
@@ -273,7 +273,9 @@ function resolveRuntimeAddresses(
   };
 }
 
-function getSupportedTokens(addresses: RuntimeAddresses): ProtocolTokenSupport[] {
+function getSupportedTokens(
+  addresses: RuntimeAddresses,
+): ProtocolTokenSupport[] {
   const supported: ProtocolTokenSupport[] = [
     { chain: "ethereum", address: "native", symbol: "ETH", decimals: 18 },
     { chain: "base", address: "native", symbol: "ETH", decimals: 18 },
@@ -341,10 +343,14 @@ function getSwapRoutes(
     const baseUsdt = addresses.usdt.base;
     const ethereumUsdt = addresses.usdt.ethereum;
     if (!aerodromeRouter) {
-      throw new Error("Mainnet swap config is missing aerodrome router address");
+      throw new Error(
+        "Mainnet swap config is missing aerodrome router address",
+      );
     }
     if (!aerodromeFactory) {
-      throw new Error("Mainnet swap config is missing aerodrome factory address");
+      throw new Error(
+        "Mainnet swap config is missing aerodrome factory address",
+      );
     }
     if (!baseUsdt || !ethereumUsdt) {
       throw new Error("Mainnet swap config is missing USDT token addresses");

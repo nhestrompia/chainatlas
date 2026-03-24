@@ -471,24 +471,6 @@ export const WALKABLE_RECTS: RectArea[] = [
   },
 ];
 
-// Rotated walkable rects for the two diagonal bridges
-export const WALKABLE_ROTATED_RECTS: RotatedRectArea[] = [
-  {
-    x: -29,
-    z: POLYGON_BRIDGE_CENTER_Z,
-    hx: 7,
-    hz: 48,
-    rotationY: ETH_POLYGON_ROTATION_Y,
-  },
-  {
-    x: 29,
-    z: POLYGON_BRIDGE_CENTER_Z,
-    hx: 7,
-    hz: 48,
-    rotationY: BASE_POLYGON_ROTATION_Y,
-  },
-];
-
 export const OBSTACLE_RECTS: RotatedRectArea[] = ALL_BUILDINGS.map(
   (building) => ({
     x: building.obstacle.x ?? building.position[0],

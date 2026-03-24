@@ -29,6 +29,7 @@ import {
   SOCKET_VISIBLE_SYMBOL_LIMIT,
 } from "./config";
 import { LiveMarketBoard3D } from "./live-market-board";
+import { MerchantShops } from "./merchant-shops";
 import { shortestAngleDelta } from "./movement";
 import { PredictionGates3D } from "./prediction-gates";
 import { WaterPlane, WorldProps, ZonePads } from "./world-props";
@@ -307,6 +308,7 @@ export function SceneContent({
             snapshot={snapshot}
           />
         ))}
+        <MerchantShops labelsVisible={labelsVisible} />
       </Suspense>
       <ZonePads
         hiddenZoneId={activeZoneId}

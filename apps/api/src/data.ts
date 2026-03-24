@@ -4,6 +4,7 @@ import {
   getRuntimeProtocolConfig,
   resolveRuntimeProfile,
   type ChainSlug,
+  type MerchantListing,
   type PortfolioAsset,
   type ProtocolRegistryEntry,
   type RuntimeAddressOverrides,
@@ -15,12 +16,62 @@ export type ApiDataEnv = Record<string, unknown>;
 export type ApiDataService = {
   listPortfolio: (address: string) => Promise<PortfolioAsset[]>;
   listProtocolRegistry: () => ProtocolRegistryEntry[];
+  listWalletNfts: (address: string, chain: ChainSlug, cursor?: string) => Promise<ApiWalletNftResponse>;
+  listOpenSeaListings: (
+    address: string,
+    chain: ChainSlug,
+    limit?: number,
+  ) => Promise<ApiOpenSeaListingsResponse>;
+  buildOpenSeaFulfillment: (request: ApiOpenSeaFulfillmentRequest) => Promise<ApiOpenSeaFulfillmentResponse>;
+};
+
+export type ApiWalletNft = {
+  contractAddress: string;
+  tokenId: string;
+  collectionName: string;
+  tokenName: string;
+  imageUrl?: string;
+};
+
+export type ApiWalletNftResponse = {
+  nfts: ApiWalletNft[];
+  nextCursor?: string;
+};
+
+export type ApiOpenSeaListingsResponse = {
+  listings: MerchantListing[];
+};
+
+export type ApiOpenSeaFulfillmentRequest = {
+  chain: ChainSlug;
+  orderHash: string;
+  protocolAddress?: string;
+  fulfiller: string;
+};
+
+export type ApiOpenSeaFulfillmentResponse = {
+  to: string;
+  from?: string;
+  value: string;
+  data: string;
 };
 
 const alchemyDiscoveryNetworks = ["eth-mainnet", "base-mainnet", "eth-sepolia", "base-sepolia"] as const;
 const PORTFOLIO_PROFILE_TIMEOUT_MS = 8_000;
 const RPC_READ_TIMEOUT_MS = 4_000;
 const ALCHEMY_ENDPOINT_PATHS = ["assets/tokens/by-address", "assets/tokens/balances/by-address"] as const;
+const OPENSEA_API_BASE = "https://api.opensea.io/api/v2";
+class OpenSeaRequestError extends Error {
+  readonly status: number;
+  readonly body: string;
+
+  constructor(status: number, body: string) {
+    super(`OpenSea request failed (${status}): ${body}`);
+    this.name = "OpenSeaRequestError";
+    this.status = status;
+    this.body = body;
+  }
+}
 
 const nativeAssetMeta: Record<ChainSlug, Omit<PortfolioAsset, "balance" | "usdValue">> = {
   ethereum: {
@@ -227,6 +278,10 @@ function dedupeAssets(assets: PortfolioAsset[]) {
   return [...deduped.values()];
 }
 
+function isOpenSeaRateLimitError(error: unknown): boolean {
+  return error instanceof OpenSeaRequestError && error.status === 429;
+}
+
 function alchemyNetworkToChainSlug(network: unknown): ChainSlug | undefined {
   if (typeof network !== "string") {
     return undefined;
@@ -242,6 +297,232 @@ function alchemyNetworkToChainSlug(network: unknown): ChainSlug | undefined {
   }
 
   return undefined;
+}
+
+function openSeaChainName(chain: ChainSlug) {
+  return chain === "ethereum" ? "ethereum" : "base";
+}
+
+function toLowerAddress(address: string) {
+  try {
+    return getAddress(address).toLowerCase();
+  } catch {
+    return address.toLowerCase();
+  }
+}
+
+function parseNumberishString(value: unknown) {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.trunc(value).toString();
+  }
+  return undefined;
+}
+
+function parseOpenSeaNftsResponse(payload: unknown): ApiWalletNftResponse {
+  if (!payload || typeof payload !== "object") {
+    return { nfts: [] };
+  }
+  const record = payload as Record<string, unknown>;
+  const rawNfts = Array.isArray(record.nfts) ? record.nfts : [];
+  const nfts = rawNfts.flatMap((item) => {
+    if (!item || typeof item !== "object") {
+      return [];
+    }
+    const nft = item as Record<string, unknown>;
+    const contractAddress =
+      typeof nft.contract === "string"
+        ? nft.contract
+        : nft.contract && typeof nft.contract === "object"
+          ? (nft.contract as Record<string, unknown>).address
+          : undefined;
+    const tokenId = parseNumberishString(nft.identifier ?? nft.token_id);
+    if (typeof contractAddress !== "string" || !tokenId) {
+      return [];
+    }
+    const collectionName =
+      typeof nft.collection === "string"
+        ? nft.collection
+        : nft.collection && typeof nft.collection === "object"
+          ? ((nft.collection as Record<string, unknown>).name as string | undefined)
+          : undefined;
+    const tokenName =
+      typeof nft.name === "string" && nft.name.trim().length > 0
+        ? nft.name
+        : `${collectionName ?? "NFT"} #${tokenId}`;
+    const imageUrl =
+      typeof nft.image_url === "string"
+        ? nft.image_url
+        : typeof nft.image_original_url === "string"
+          ? nft.image_original_url
+          : undefined;
+    return [
+      {
+        contractAddress: toLowerAddress(contractAddress),
+        tokenId,
+        collectionName: collectionName ?? "Collection",
+        tokenName,
+        imageUrl,
+      } satisfies ApiWalletNft,
+    ];
+  });
+  const nextCursor = typeof record.next === "string" ? record.next : undefined;
+  return { nfts, nextCursor };
+}
+
+function parseOpenSeaListingsResponse(payload: unknown, chain: ChainSlug): ApiOpenSeaListingsResponse {
+  if (!payload || typeof payload !== "object") {
+    return { listings: [] };
+  }
+  const record = payload as Record<string, unknown>;
+  const now = Date.now();
+  const listingsArray = Array.isArray(record.orders)
+    ? record.orders
+    : Array.isArray(record.listings)
+      ? record.listings
+      : [];
+  const listings = listingsArray.flatMap((item) => {
+    if (!item || typeof item !== "object") {
+      return [];
+    }
+    const entry = item as Record<string, unknown>;
+    const orderHash =
+      typeof entry.order_hash === "string"
+        ? entry.order_hash
+        : typeof entry.orderHash === "string"
+          ? entry.orderHash
+          : undefined;
+    const makerAddress =
+      typeof entry.maker === "string"
+        ? entry.maker
+        : entry.maker && typeof entry.maker === "object"
+          ? ((entry.maker as Record<string, unknown>).address as string | undefined)
+          : undefined;
+    const protocolData = entry.protocol_data as Record<string, unknown> | undefined;
+    const parameters = protocolData?.parameters as Record<string, unknown> | undefined;
+    const consideration = Array.isArray(parameters?.consideration)
+      ? (parameters?.consideration as Array<Record<string, unknown>>)
+      : [];
+    const offer = Array.isArray(parameters?.offer)
+      ? (parameters?.offer as Array<Record<string, unknown>>)
+      : [];
+    const nftOffer = offer.find((itemOffer) => {
+      const itemType = Number(itemOffer.itemType ?? itemOffer.item_type);
+      return itemType === 2 || itemType === 3;
+    });
+    const payment = consideration.find((itemConsideration) => {
+      const itemType = Number(itemConsideration.itemType ?? itemConsideration.item_type);
+      return itemType === 0;
+    });
+    const priceRecord =
+      entry.price && typeof entry.price === "object"
+        ? (entry.price as Record<string, unknown>)
+        : undefined;
+    const contractAddress = parseNumberishString(nftOffer?.token ?? entry.asset_contract_address);
+    const tokenId = parseNumberishString(
+      nftOffer?.identifierOrCriteria ??
+        nftOffer?.identifier_or_criteria ??
+        entry.token_id ??
+        entry.identifier,
+    );
+    const startAmount = parseNumberishString(
+      payment?.startAmount ??
+        payment?.start_amount ??
+        entry.current_price ??
+        priceRecord?.value,
+    );
+    const tokenName =
+      typeof entry.asset_name === "string"
+        ? entry.asset_name
+        : typeof entry.title === "string"
+          ? entry.title
+          : tokenId
+            ? `NFT #${tokenId}`
+            : "NFT";
+    const collectionName =
+      typeof entry.collection === "string"
+        ? entry.collection
+        : entry.collection && typeof entry.collection === "object"
+          ? ((entry.collection as Record<string, unknown>).name as string | undefined)
+          : "Collection";
+    const imageUrl =
+      typeof entry.image_url === "string"
+        ? entry.image_url
+        : entry.asset && typeof entry.asset === "object"
+          ? ((entry.asset as Record<string, unknown>).image_url as string | undefined)
+          : undefined;
+    const expirationTime =
+      parseNumberishString(entry.expiration_time) ??
+      parseNumberishString(parameters?.endTime ?? parameters?.end_time);
+    if (
+      typeof orderHash !== "string" ||
+      typeof makerAddress !== "string" ||
+      typeof contractAddress !== "string" ||
+      !tokenId ||
+      !startAmount
+    ) {
+      return [];
+    }
+    const expirySeconds = expirationTime ? Number(expirationTime) : undefined;
+    const expiryMs =
+      typeof expirySeconds === "number" && Number.isFinite(expirySeconds)
+        ? expirySeconds * 1000
+        : undefined;
+    if (typeof expiryMs === "number" && expiryMs <= now) {
+      return [];
+    }
+    return [
+      {
+        listingId: orderHash,
+        orderHash,
+        source: "opensea",
+        status: "active",
+        seller: toLowerAddress(makerAddress),
+        chain,
+        nftContract: toLowerAddress(contractAddress),
+        tokenId,
+        collectionName: collectionName ?? "Collection",
+        tokenName,
+        imageUrl,
+        priceWei: startAmount,
+        currencySymbol: "ETH",
+        expiry: expiryMs,
+        createdAt: now,
+        updatedAt: now,
+      } satisfies MerchantListing,
+    ];
+  });
+  return { listings };
+}
+
+function parseOpenSeaFulfillmentResponse(payload: unknown): ApiOpenSeaFulfillmentResponse | undefined {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  const record = payload as Record<string, unknown>;
+  const tx =
+    record.fulfillment_data && typeof record.fulfillment_data === "object"
+      ? (record.fulfillment_data as Record<string, unknown>).transaction
+      : record.transaction;
+  if (!tx || typeof tx !== "object") {
+    return undefined;
+  }
+  const transaction = tx as Record<string, unknown>;
+  const to = typeof transaction.to === "string" ? transaction.to : undefined;
+  const data = typeof transaction.data === "string" ? transaction.data : undefined;
+  const value = parseNumberishString(transaction.value) ?? "0";
+  const from = typeof transaction.from === "string" ? transaction.from : undefined;
+  if (!to || !data) {
+    return undefined;
+  }
+  return {
+    to: toLowerAddress(to),
+    from: from ? toLowerAddress(from) : undefined,
+    value,
+    data,
+  };
 }
 
 function parseAlchemyTokenAsset(raw: unknown): PortfolioAsset | undefined {
@@ -413,10 +694,40 @@ export function createApiDataService(rawEnv: ApiDataEnv): ApiDataService {
   };
   const publicClientsByProfile = createPublicClients(env);
   const tokenMetadata = buildTokenMetadata(runtimeConfigByProfile);
+  const openSeaApiKey = getEnvString(env, "OPENSEA_API_KEY");
   let loggedMissingAlchemyKey = false;
+  let loggedMissingOpenSeaKey = false;
 
   function getPublicClient(profile: RuntimeProfile, chain: ChainSlug) {
     return publicClientsByProfile[profile][chain];
+  }
+
+  async function requestOpenSea(path: string, init?: RequestInit) {
+    if (!openSeaApiKey) {
+      if (!loggedMissingOpenSeaKey) {
+        loggedMissingOpenSeaKey = true;
+        console.warn("[market] OPENSEA_API_KEY is not set; OpenSea endpoints will return empty results.");
+      }
+      throw new Error("OpenSea API key is not configured");
+    }
+
+    const headers = new Headers(init?.headers);
+    headers.set("Accept", "application/json");
+    headers.set("Content-Type", "application/json");
+    headers.set("X-API-KEY", openSeaApiKey);
+
+    const response = await fetch(`${OPENSEA_API_BASE}${path}`, {
+      ...init,
+      headers,
+      signal: AbortSignal.timeout(8_000),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new OpenSeaRequestError(response.status, body);
+    }
+
+    return (await response.json()) as unknown;
   }
 
   async function listAlchemyTokenAssets(address: string): Promise<PortfolioAsset[]> {
@@ -612,9 +923,91 @@ export function createApiDataService(rawEnv: ApiDataEnv): ApiDataService {
     return runtimeConfig.protocolRegistry;
   }
 
+  async function listWalletNfts(address: string, chain: ChainSlug, cursor?: string) {
+    if (!openSeaApiKey) {
+      return { nfts: [] } satisfies ApiWalletNftResponse;
+    }
+    const checksumAddress = getAddress(address);
+    const params = new URLSearchParams();
+    if (cursor) {
+      params.set("next", cursor);
+    }
+    params.set("limit", "50");
+    const query = params.toString();
+    const payload = await requestOpenSea(
+      `/chain/${openSeaChainName(chain)}/account/${checksumAddress}/nfts${query ? `?${query}` : ""}`,
+      { method: "GET" },
+    );
+    return parseOpenSeaNftsResponse(payload);
+  }
+
+  async function listOpenSeaListings(address: string, chain: ChainSlug, limit = 20) {
+    if (!openSeaApiKey) {
+      return { listings: [] } satisfies ApiOpenSeaListingsResponse;
+    }
+    const checksumAddress = getAddress(address);
+    const chainName = openSeaChainName(chain);
+    const cappedLimit = Math.max(1, Math.min(50, Math.trunc(limit)));
+    try {
+      const payload = await requestOpenSea(
+        `/orders/${chainName}/seaport/listings?maker=${checksumAddress}&limit=${cappedLimit}`,
+        { method: "GET" },
+      );
+      return parseOpenSeaListingsResponse(payload, chain);
+    } catch (primaryError) {
+      if (isOpenSeaRateLimitError(primaryError)) {
+        return { listings: [] } satisfies ApiOpenSeaListingsResponse;
+      }
+      // OpenSea orderbook routes can differ by account capability/profile.
+      // Fallback to account events so sellers can still hydrate baseline listings.
+      try {
+        const payload = await requestOpenSea(
+          `/events/accounts/${checksumAddress}?chain=${chainName}&event_type=order&limit=${cappedLimit}`,
+          { method: "GET" },
+        );
+        return parseOpenSeaListingsResponse(payload, chain);
+      } catch (fallbackError) {
+        if (!isOpenSeaRateLimitError(fallbackError)) {
+          console.warn(
+            `[market] OpenSea listings unavailable for ${checksumAddress} on ${chainName}; returning empty list.`,
+          );
+        }
+        return { listings: [] } satisfies ApiOpenSeaListingsResponse;
+      }
+    }
+  }
+
+  async function buildOpenSeaFulfillment(request: ApiOpenSeaFulfillmentRequest) {
+    if (!openSeaApiKey) {
+      throw new Error("OpenSea API key is not configured");
+    }
+    const checksumFulfiller = getAddress(request.fulfiller);
+    const payload = await requestOpenSea("/listings/fulfillment_data", {
+      method: "POST",
+      body: JSON.stringify({
+        listing: {
+          hash: request.orderHash,
+          chain: openSeaChainName(request.chain),
+          ...(request.protocolAddress ? { protocol_address: request.protocolAddress } : {}),
+        },
+        fulfiller: {
+          address: checksumFulfiller,
+        },
+      }),
+    });
+    const fulfillment = parseOpenSeaFulfillmentResponse(payload);
+    if (!fulfillment) {
+      throw new Error("OpenSea fulfillment payload missing transaction call data");
+    }
+    return fulfillment;
+  }
+
   return {
     listPortfolio,
     listProtocolRegistry,
+    listWalletNfts,
+    listOpenSeaListings,
+    buildOpenSeaFulfillment,
   };
 }
 
@@ -630,3 +1023,6 @@ const defaultService = createApiDataService(resolveDefaultEnv());
 
 export const listPortfolio = defaultService.listPortfolio;
 export const listProtocolRegistry = defaultService.listProtocolRegistry;
+export const listWalletNfts = defaultService.listWalletNfts;
+export const listOpenSeaListings = defaultService.listOpenSeaListings;
+export const buildOpenSeaFulfillment = defaultService.buildOpenSeaFulfillment;

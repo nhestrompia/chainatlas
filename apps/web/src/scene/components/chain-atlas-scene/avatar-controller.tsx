@@ -1,14 +1,3 @@
-import { Html } from "@react-three/drei";
-import { useFrame, useThree } from "@react-three/fiber";
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { Group, Object3D, Raycaster, Vector3 } from "three";
 import {
   ensureWalletChain,
   isLikelyEmbeddedWallet,
@@ -21,11 +10,15 @@ import {
   type TokenMinion,
   type Vector3Like,
 } from "@chainatlas/shared";
+import { Html } from "@react-three/drei";
+import { useFrame, useThree } from "@react-three/fiber";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Group, Object3D, Raycaster, Vector3 } from "three";
+import { AvatarBody, AvatarNameTag } from "./avatar-primitives";
 import {
   AVATAR_GROUND_OFFSET,
   AVATAR_MOVE_SPEED,
   BRIDGES,
-  type BridgeDefinition,
   type BridgeId,
   CAMERA_FOLLOW_DISTANCE,
   CAMERA_FOLLOW_HEIGHT,
@@ -42,6 +35,7 @@ import {
   shortenAddress,
   toBridgeLocal,
 } from "./config";
+import { TokenMinions } from "./minions";
 import {
   getOverlayForZone,
   hasBlockedGroundAncestor,
@@ -49,8 +43,6 @@ import {
   resolveMovement,
   shortestAngleDelta,
 } from "./movement";
-import { AvatarBody, AvatarNameTag } from "./avatar-primitives";
-import { TokenMinions } from "./minions";
 
 const WORLD_UP = new Vector3(0, 1, 0);
 
@@ -83,7 +75,13 @@ export const Avatar = memo(function Avatar({
   displayName: string;
   groundSurfaces: Object3D[];
   labelsVisible: boolean;
-  onGateOpenChange(update: Partial<Record<BridgeId, boolean>> | ((prev: Partial<Record<BridgeId, boolean>>) => Partial<Record<BridgeId, boolean>>)): void;
+  onGateOpenChange(
+    update:
+      | Partial<Record<BridgeId, boolean>>
+      | ((
+          prev: Partial<Record<BridgeId, boolean>>,
+        ) => Partial<Record<BridgeId, boolean>>),
+  ): void;
   onZoneChange?(zoneId?: string): void;
   onPositionChange(position: Vector3Like, rotationY: number): void;
 }) {
@@ -95,10 +93,22 @@ export const Avatar = memo(function Avatar({
   const setSendStep = useAppStore((state) => state.setSendStep);
   const setBridgeSelection = useAppStore((state) => state.setBridgeSelection);
   const setBridgeStep = useAppStore((state) => state.setBridgeStep);
-  const setPredictionSelectedMarket = useAppStore((state) => state.setPredictionSelectedMarket);
+  const setPredictionSelectedMarket = useAppStore(
+    (state) => state.setPredictionSelectedMarket,
+  );
   const setRoom = useAppStore((state) => state.setRoom);
   const activeOverlay = useAppStore((state) => state.overlays.activeOverlay);
   const nearbyTarget = useAppStore((state) => state.overlays.nearbyTarget);
+  const nearbyMerchantSeller = useAppStore(
+    (state) => state.overlays.nearbyMerchantSeller,
+  );
+  const nearbyMerchantListingCount = useAppStore((state) => {
+    const seller = state.overlays.nearbyMerchantSeller?.toLowerCase();
+    if (!seller) {
+      return 0;
+    }
+    return state.merchants.shops[seller]?.listings.length ?? 0;
+  });
   const nearbyTargetLabel = useAppStore((state) => {
     const target = state.overlays.nearbyTarget?.toLowerCase();
     if (!target) {
@@ -149,7 +159,9 @@ export const Avatar = memo(function Avatar({
   } | null>(null);
   const gl = useThree((state) => state.gl);
   const [isMoving, setIsMoving] = useState(false);
-  const [nearBridgeId, setNearBridgeId] = useState<BridgeId | undefined>(undefined);
+  const [nearBridgeId, setNearBridgeId] = useState<BridgeId | undefined>(
+    undefined,
+  );
   const [gateSwitching, setGateSwitching] = useState(false);
   const [gateSwitchError, setGateSwitchError] = useState<string>();
   const [targetPortalChain, setTargetPortalChain] = useState<ChainSlug>("base");
@@ -166,7 +178,8 @@ export const Avatar = memo(function Avatar({
   const currentZoneIdRef = useRef<string | undefined>(undefined);
   const swapSelectionMode = activeOverlay === "swap" && swapStep !== "details";
   const sendSelectionMode = activeOverlay === "send" && sendStep !== "details";
-  const bridgeSelectionMode = activeOverlay === "bridge" && bridgeStep !== "details";
+  const bridgeSelectionMode =
+    activeOverlay === "bridge" && bridgeStep !== "details";
   const selectionMode =
     swapSelectionMode || sendSelectionMode || bridgeSelectionMode;
   const targetPortalChainLabel =
@@ -185,7 +198,10 @@ export const Avatar = memo(function Avatar({
       const sendContext = sendSelectionMode || zoneOverlay === "send";
       const swapContext = swapSelectionMode || zoneOverlay === "swap";
       const bridgeContext = bridgeSelectionMode || zoneOverlay === "bridge";
-      if ((!swapContext && !sendContext && !bridgeContext) || minion.chain !== activeChain) {
+      if (
+        (!swapContext && !sendContext && !bridgeContext) ||
+        minion.chain !== activeChain
+      ) {
         return;
       }
 
@@ -454,6 +470,11 @@ export const Avatar = memo(function Avatar({
         setOverlay(zoneOverlay);
         return;
       }
+      if (nearbyMerchantSeller) {
+        event.preventDefault();
+        setOverlay("merchant", nearbyMerchantSeller);
+        return;
+      }
       if (!nearbyTarget) {
         return;
       }
@@ -465,7 +486,13 @@ export const Avatar = memo(function Avatar({
     return () => {
       window.removeEventListener("keydown", onInteract);
     };
-  }, [nearbyTarget, requestBridgeGateUnlock, setOverlay, setPredictionSelectedMarket]);
+  }, [
+    nearbyMerchantSeller,
+    nearbyTarget,
+    requestBridgeGateUnlock,
+    setOverlay,
+    setPredictionSelectedMarket,
+  ]);
 
   useEffect(() => {
     if (!avatarRef.current || hasSpawnedRef.current) {
@@ -740,19 +767,26 @@ export const Avatar = memo(function Avatar({
     // Near-gate detection for all bridges + derive target chain
     let detectedNearBridge: BridgeId | undefined;
     for (const bridge of BRIDGES) {
-      if (currentRoomId !== bridge.negativeRoom && currentRoomId !== bridge.positiveRoom) {
+      if (
+        currentRoomId !== bridge.negativeRoom &&
+        currentRoomId !== bridge.positiveRoom
+      ) {
         continue;
       }
       const local = toBridgeLocal(bridge, target.x, target.z);
       const onNegativeSide = currentRoomId === bridge.negativeRoom;
-      const correctSide = onNegativeSide ? local.forward <= 0 : local.forward >= 0;
+      const correctSide = onNegativeSide
+        ? local.forward <= 0
+        : local.forward >= 0;
       if (
         correctSide &&
         Math.abs(local.forward) <= bridge.interactHalfForward &&
         Math.abs(local.perp) <= bridge.interactHalfPerp
       ) {
         detectedNearBridge = bridge.id;
-        const derivedChain = onNegativeSide ? bridge.negativeChain : bridge.positiveChain;
+        const derivedChain = onNegativeSide
+          ? bridge.negativeChain
+          : bridge.positiveChain;
         if (derivedChain !== targetPortalChain) {
           setTargetPortalChain(derivedChain);
         }
@@ -804,7 +838,7 @@ export const Avatar = memo(function Avatar({
               ? selectedSendAssetKey
               : activeOverlay === "bridge"
                 ? selectedBridgeAssetKey
-              : undefined
+                : undefined
         }
       />
       {labelsVisible && nearBridgeId ? (
@@ -835,6 +869,26 @@ export const Avatar = memo(function Avatar({
       ) : null}
       {!nearBridgeId &&
       !currentZoneOverlay &&
+      nearbyMerchantSeller &&
+      labelsVisible ? (
+        <Html position={[0, 4.2, 0]} center>
+          <div className="pointer-events-none border border-amber-200/35 bg-black/60 px-2 py-1 text-white shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
+            <div className="flex items-center gap-2">
+              <span className="border border-amber-200/45 bg-amber-200/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none">
+                E
+              </span>
+              <span className="text-[10px] uppercase text-amber-100/90">
+                Merchant
+              </span>
+            </div>
+            <p className="mt-0.5 text-[12px] font-medium leading-tight whitespace-nowrap">
+              SHOP OPEN · {nearbyMerchantListingCount} listings
+            </p>
+          </div>
+        </Html>
+      ) : null}
+      {!currentZoneOverlay &&
+      !nearbyMerchantSeller &&
       nearbyTarget &&
       labelsVisible ? (
         <Html position={[0, 4.2, 0]} center>

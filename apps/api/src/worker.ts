@@ -1,4 +1,5 @@
 import {
+  chainSlugSchema,
   portfolioAssetSchema,
   protocolRegistryEntrySchema,
 } from "@chainatlas/shared";
@@ -25,7 +26,7 @@ function buildCorsHeaders(request: Request) {
   return {
     "Access-Control-Allow-Origin": origin ?? "*",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     Vary: "Origin",
   };
 }
@@ -41,7 +42,7 @@ export default {
       });
     }
 
-    if (request.method !== "GET") {
+    if (request.method !== "GET" && request.method !== "POST") {
       return jsonResponse(
         { message: "Method not allowed" },
         { status: 405, headers: corsHeaders },
@@ -83,6 +84,45 @@ export default {
       const payload = (await dataService.listPortfolio(address)).map((asset) =>
         portfolioAssetSchema.parse(asset),
       );
+      return jsonResponse(payload, { headers: corsHeaders });
+    }
+
+    if (pathname.startsWith("/nfts/")) {
+      const address = decodeURIComponent(pathname.slice("/nfts/".length));
+      const chain = chainSlugSchema.parse(url.searchParams.get("chain"));
+      const cursor = url.searchParams.get("cursor") ?? undefined;
+      const payload = await dataService.listWalletNfts(address, chain, cursor);
+      return jsonResponse(payload, { headers: corsHeaders });
+    }
+
+    if (pathname.startsWith("/market/opensea/listings/")) {
+      const address = decodeURIComponent(
+        pathname.slice("/market/opensea/listings/".length),
+      );
+      const chain = chainSlugSchema.parse(url.searchParams.get("chain"));
+      const limitParam = url.searchParams.get("limit");
+      const limit = limitParam ? Number.parseInt(limitParam, 10) : 20;
+      const payload = await dataService.listOpenSeaListings(address, chain, limit);
+      return jsonResponse(payload, { headers: corsHeaders });
+    }
+
+    if (pathname === "/market/opensea/fulfillment" && request.method === "POST") {
+      const rawBody = (await request.json()) as unknown;
+      const body =
+        rawBody && typeof rawBody === "object" ? (rawBody as Record<string, unknown>) : {};
+      const chain = chainSlugSchema.parse(body.chain);
+      const orderHash =
+        typeof body.orderHash === "string" ? body.orderHash : "";
+      const fulfiller =
+        typeof body.fulfiller === "string" ? body.fulfiller : "";
+      const protocolAddress =
+        typeof body.protocolAddress === "string" ? body.protocolAddress : undefined;
+      const payload = await dataService.buildOpenSeaFulfillment({
+        chain,
+        orderHash,
+        fulfiller,
+        protocolAddress,
+      });
       return jsonResponse(payload, { headers: corsHeaders });
     }
 

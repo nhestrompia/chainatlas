@@ -74,6 +74,11 @@ const LazyPlayerPanel = lazy(() =>
     default: module.PlayerPanel,
   })),
 );
+const LazyMerchantPanel = lazy(() =>
+  import("@/features/overlays/action-panels").then((module) => ({
+    default: module.MerchantPanel,
+  })),
+);
 const LazyPredictionPanel = lazy(() =>
   import("@/features/overlays/action-panels").then((module) => ({
     default: module.PredictionPanel,
@@ -88,6 +93,16 @@ export function WorldHud() {
   const setLocalShout = useAppStore((state) => state.setLocalShout);
   const localPresence = useAppStore((state) => state.presence.local);
   const nearbyTarget = useAppStore((state) => state.overlays.nearbyTarget);
+  const nearbyMerchantSeller = useAppStore(
+    (state) => state.overlays.nearbyMerchantSeller,
+  );
+  const nearbyMerchantShop = useAppStore((state) => {
+    const seller = state.overlays.nearbyMerchantSeller?.toLowerCase();
+    if (!seller) {
+      return undefined;
+    }
+    return state.merchants.shops[seller];
+  });
   const nearbyTargetLabel = useAppStore((state) => {
     const target = state.overlays.nearbyTarget?.toLowerCase();
     if (!target) {
@@ -141,9 +156,15 @@ export function WorldHud() {
     if (overlays.activeOverlay === "jobs") return <LazyJobsPanel />;
     if (overlays.activeOverlay === "chat") return <LazyChatPanel />;
     if (overlays.activeOverlay === "player") return <LazyPlayerPanel />;
+    if (overlays.activeOverlay === "merchant") return <LazyMerchantPanel />;
     if (overlays.activeOverlay === "prediction") return <LazyPredictionPanel />;
     return null;
-  }, [overlays.activeOverlay, overlays.bridgeStep, overlays.sendStep, overlays.swapStep]);
+  }, [
+    overlays.activeOverlay,
+    overlays.bridgeStep,
+    overlays.sendStep,
+    overlays.swapStep,
+  ]);
   const immersiveActionPanel =
     overlays.activeOverlay === "swap" ||
     overlays.activeOverlay === "send" ||
@@ -154,13 +175,19 @@ export function WorldHud() {
       return "max-w-[540px]";
     }
     if (overlays.activeOverlay === "swap") {
-      return overlays.swapStep === "details" ? "max-w-[440px]" : "max-w-[500px]";
+      return overlays.swapStep === "details"
+        ? "max-w-[440px]"
+        : "max-w-[500px]";
     }
     if (overlays.activeOverlay === "send") {
-      return overlays.sendStep === "details" ? "max-w-[440px]" : "max-w-[500px]";
+      return overlays.sendStep === "details"
+        ? "max-w-[440px]"
+        : "max-w-[500px]";
     }
     if (overlays.activeOverlay === "bridge") {
-      return overlays.bridgeStep === "details" ? "max-w-[440px]" : "max-w-[500px]";
+      return overlays.bridgeStep === "details"
+        ? "max-w-[440px]"
+        : "max-w-[500px]";
     }
     if (overlays.activeOverlay === "prediction") {
       return "max-w-[460px]";
@@ -266,6 +293,22 @@ export function WorldHud() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              {address ? (
+                <button
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-amber-50 shadow-xl backdrop-blur-xl transition-colors",
+                    overlays.activeOverlay === "merchant" &&
+                      overlays.nearbyMerchantSeller?.toLowerCase() ===
+                        address.toLowerCase()
+                      ? "border-amber-200/65 bg-amber-300/25"
+                      : "border-amber-200/40 bg-[#2b1e12]/88 hover:border-amber-200/60 hover:bg-[#3a2818]",
+                  )}
+                  onClick={() => setOverlay("merchant", address)}
+                  type="button"
+                >
+                  My Merchant
+                </button>
+              ) : null}
               {/* <div className="rounded-full border border-cyan-100/20 bg-[#08151d]/85 px-3 py-1.5 text-cyan-50 shadow-xl tabular-nums backdrop-blur-xl">
                 Players {nearbyPlayers}
               </div> */}
@@ -285,6 +328,23 @@ export function WorldHud() {
                     {nearbyTargetLabel
                       ? `· ${nearbyTargetLabel}`
                       : `· ${shortAddress(nearbyTarget)}`}
+                  </span>
+                </button>
+              ) : null}
+              {nearbyMerchantSeller && nearbyMerchantShop ? (
+                <button
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-amber-50 shadow-xl backdrop-blur-xl transition-colors",
+                    overlays.activeOverlay === "merchant"
+                      ? "border-amber-200/65 bg-amber-300/25"
+                      : "border-amber-200/40 bg-[#2b1e12]/88 hover:border-amber-200/60 hover:bg-[#3a2818]",
+                  )}
+                  onClick={() => setOverlay("merchant", nearbyMerchantSeller)}
+                  type="button"
+                >
+                  Merchant
+                  <span className="ml-1 text-amber-100/80">
+                    · {nearbyMerchantShop.listings.length} items
                   </span>
                 </button>
               ) : null}
@@ -393,14 +453,18 @@ export function WorldHud() {
             className={cn(
               "pointer-events-auto relative w-full",
               panelWidthClass,
-              overlays.activeOverlay === "prediction" && "prediction-panel-enter",
+              overlays.activeOverlay === "prediction" &&
+                "prediction-panel-enter",
             )}
             onClick={(event) => event.stopPropagation()}
           >
             <button
               aria-label="Close action panel"
               className={cn(
-                "absolute right-3 z-10 flex size-8 items-center justify-center rounded-lg border border-cyan-100/30 bg-[#08151d]/95 text-base font-semibold leading-none text-cyan-50 shadow-lg backdrop-blur-xl hover:bg-[#0d1f2b]",
+                "absolute right-3 z-10 flex size-8 items-center justify-center rounded-lg border text-base font-semibold leading-none shadow-lg backdrop-blur-xl",
+                overlays.activeOverlay === "merchant"
+                  ? "border-[#c79e54]/65 bg-[#2f1c12]/95 text-[#f8e5bc] hover:bg-[#412717]"
+                  : "border-cyan-100/30 bg-[#08151d]/95 text-cyan-50 hover:bg-[#0d1f2b]",
                 immersiveActionPanel ? "top-2" : "top-3",
               )}
               onClick={() => setOverlay(undefined)}
@@ -408,7 +472,15 @@ export function WorldHud() {
             >
               ×
             </button>
-            <Suspense fallback={null}>{panel}</Suspense>
+            <Suspense
+              fallback={
+                <div className="rounded-2xl border border-cyan-100/20 bg-[#08151d]/92 p-4 text-sm text-cyan-100/80 shadow-2xl backdrop-blur-xl">
+                  Loading panel...
+                </div>
+              }
+            >
+              {panel}
+            </Suspense>
           </div>
         </div>
       ) : null}
