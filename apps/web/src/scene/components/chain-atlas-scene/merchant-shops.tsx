@@ -6,11 +6,9 @@ type RenderedShop = {
   shop: {
     seller: string;
     updatedAt: number;
-    mode: "clone" | "mobile";
     listings: Array<{ tokenName: string; priceWei: string; imageUrl?: string }>;
   };
   anchor: { x: number; y: number; z: number };
-  mobile: boolean;
 };
 
 function MerchantBoard({
@@ -52,8 +50,6 @@ function MerchantBoard({
 export function MerchantShops({ labelsVisible }: { labelsVisible: boolean }) {
   const session = useAppStore((state) => state.session);
   const merchantShops = useAppStore((state) => state.merchants.shops);
-  const remote = useAppStore((state) => state.presence.remote);
-  const localPresence = useAppStore((state) => state.presence.local);
   const setOverlay = useAppStore((state) => state.setOverlay);
 
   const renderedShops = useMemo(() => {
@@ -64,64 +60,41 @@ export function MerchantShops({ labelsVisible }: { labelsVisible: boolean }) {
       if (shop.listings.length === 0) {
         return [];
       }
-      if (shop.mode === "mobile") {
-        const sellerLower = shop.seller.toLowerCase();
-        const anchor =
-          session.connectedAddress?.toLowerCase() === sellerLower
-            ? localPresence?.position
-            : Object.values(remote).find(
-                (presence) => presence.address.toLowerCase() === sellerLower,
-              )?.position;
-        if (!anchor) {
-          return [];
-        }
-        return [{ shop, anchor, mobile: true }];
-      }
-      return [{ shop, anchor: shop.anchor, mobile: false }];
+      return [{ shop, anchor: shop.anchor }];
     });
   }, [
-    localPresence?.position,
     merchantShops,
-    remote,
     session.activeChain,
-    session.connectedAddress,
     session.currentRoomId,
   ]);
 
   return (
     <group>
-      {renderedShops.map(({ shop, anchor, mobile }) => (
+      {renderedShops.map(({ shop, anchor }) => (
         <group
-          key={`${shop.seller}:${shop.updatedAt}:${shop.mode}`}
+          key={`${shop.seller}:${shop.updatedAt}`}
           onClick={(event) => {
             event.stopPropagation();
             setOverlay("merchant", shop.seller);
           }}
           position={[anchor.x, anchor.y, anchor.z]}
         >
-          {!mobile ? (
-            <>
-              <mesh castShadow receiveShadow position={[0, 0.45, 0]}>
-                <cylinderGeometry args={[1.4, 1.6, 0.9, 16]} />
-                <meshStandardMaterial color="#6d4c2f" roughness={0.8} />
-              </mesh>
-              <mesh castShadow position={[0, 1.45, 0]}>
-                <boxGeometry args={[1.8, 1.2, 1.1]} />
-                <meshStandardMaterial color="#8a5f37" roughness={0.7} />
-              </mesh>
-            </>
-          ) : null}
+          <mesh castShadow receiveShadow position={[0, 0.45, 0]}>
+            <cylinderGeometry args={[1.4, 1.6, 0.9, 16]} />
+            <meshStandardMaterial color="#6d4c2f" roughness={0.8} />
+          </mesh>
+          <mesh castShadow position={[0, 1.45, 0]}>
+            <boxGeometry args={[1.8, 1.2, 1.1]} />
+            <meshStandardMaterial color="#8a5f37" roughness={0.7} />
+          </mesh>
           {labelsVisible ? (
-            <Html center position={[0, mobile ? 3 : 3.2, 0]}>
+            <Html center position={[0, 3.2, 0]}>
               <div className="text-center">
                 <div className="mx-auto w-max rounded-md border border-amber-200/35 bg-[#22180f]/90 px-2 py-0.5 text-[10px] font-semibold text-amber-100">
-                  {mobile ? "SELLING" : "SHOP OPEN"}
+                  SHOP OPEN
                 </div>
                 <div className="mt-1">
-                  <MerchantBoard
-                    label={mobile ? "Mobile Merchant" : "Merchant Stall"}
-                    listings={shop.listings}
-                  />
+                  <MerchantBoard label="Merchant Stall" listings={shop.listings} />
                 </div>
               </div>
             </Html>

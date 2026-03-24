@@ -420,7 +420,10 @@ export function WorldHud() {
             <button
               aria-label="Close action panel"
               className={cn(
-                "absolute right-3 z-10 flex size-8 items-center justify-center rounded-lg border border-cyan-100/30 bg-[#08151d]/95 text-base font-semibold leading-none text-cyan-50 shadow-lg backdrop-blur-xl hover:bg-[#0d1f2b]",
+                "absolute right-3 z-10 flex size-8 items-center justify-center rounded-lg border text-base font-semibold leading-none shadow-lg backdrop-blur-xl",
+                overlays.activeOverlay === "merchant"
+                  ? "border-[#c79e54]/65 bg-[#2f1c12]/95 text-[#f8e5bc] hover:bg-[#412717]"
+                  : "border-cyan-100/30 bg-[#08151d]/95 text-cyan-50 hover:bg-[#0d1f2b]",
                 immersiveActionPanel ? "top-2" : "top-3",
               )}
               onClick={() => setOverlay(undefined)}
@@ -428,7 +431,15 @@ export function WorldHud() {
             >
               ×
             </button>
-            <Suspense fallback={null}>{panel}</Suspense>
+            <Suspense
+              fallback={
+                <div className="rounded-2xl border border-cyan-100/20 bg-[#08151d]/92 p-4 text-sm text-cyan-100/80 shadow-2xl backdrop-blur-xl">
+                  Loading panel...
+                </div>
+              }
+            >
+              {panel}
+            </Suspense>
           </div>
         </div>
       ) : null}

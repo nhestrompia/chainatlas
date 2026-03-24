@@ -510,6 +510,7 @@ export default class ChainAtlasRoom implements Party.Server {
       ...shop,
       chain,
       roomId,
+      mode: "clone",
       updatedAt: now,
       listings: clampListings(
         shop.listings.map((listing) => ({
@@ -535,7 +536,7 @@ export default class ChainAtlasRoom implements Party.Server {
     const externalListings = shop.listings.filter((listing) => listing.source === "opensea");
     const merged: MerchantShop = {
       ...existing,
-      mode: shop.mode,
+      mode: "clone",
       anchor: shop.anchor,
       updatedAt: Date.now(),
       listings: clampListings([...chainatlasListings, ...externalListings]),

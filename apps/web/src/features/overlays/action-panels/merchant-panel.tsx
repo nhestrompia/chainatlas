@@ -1,9 +1,16 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { type ReactNode, useMemo, useState } from "react";
 import { formatEther, getAddress, parseEther } from "viem";
-import type { MerchantListing, MerchantMode, MerchantShop } from "@chainatlas/shared";
+import type { MerchantListing, MerchantShop } from "@chainatlas/shared";
 import { usePrivyWallet } from "@/features/wallet/use-privy-wallet";
 import { createSeaportListingOrder, fulfillChainAtlasListing, submitOpenSeaFulfillmentTransaction } from "@/features/merchant/seaport";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   fetchOpenSeaFulfillment,
   fetchOpenSeaListings,
@@ -15,6 +22,10 @@ import { cn } from "@/lib/utils/cn";
 import { ActionButton, InlineError, shortAddress } from "./shared";
 
 type MerchantTab = "browse" | "my-listings" | "import" | "create";
+const merchantPrimaryButtonClass =
+  "border-[#d7b56f]/80 bg-gradient-to-r from-[#8f3f21] to-[#b15a2e] text-[#fff4db] hover:border-[#efd19a] hover:from-[#a34a27] hover:to-[#c86c38]";
+const merchantUtilityButtonClass =
+  "border-[#c79e54]/55 bg-[#3a2314] text-[#f2ddae] hover:border-[#dfbe79] hover:bg-[#4a2c18]";
 
 function normalizeListings(listings: MerchantListing[]) {
   const deduped = new Map<string, MerchantListing>();
@@ -33,7 +44,6 @@ function buildShop(input: {
   address: string;
   chain: "ethereum" | "base";
   roomId: "ethereum:main" | "base:main";
-  mode: MerchantMode;
   anchor: { x: number; y: number; z: number };
   listings: MerchantListing[];
 }) {
@@ -41,7 +51,7 @@ function buildShop(input: {
     seller: input.address,
     chain: input.chain,
     roomId: input.roomId,
-    mode: input.mode,
+    mode: "clone",
     anchor: input.anchor,
     updatedAt: Date.now(),
     listings: normalizeListings(input.listings),
@@ -58,11 +68,11 @@ function MerchantFrame({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-amber-200/35 bg-[#22180f]/95 p-4 shadow-2xl">
-      <div className="rounded-xl border border-amber-200/30 bg-[#3a2818]/90 px-3 py-2">
-        <p className="text-xs font-semibold text-amber-200/75 text-balance">Bazaar Ledger</p>
-        <h2 className="mt-1 text-xl font-semibold text-amber-50 text-balance">{title}</h2>
-        <p className="mt-1 text-sm text-amber-100/80 text-pretty">{subtitle}</p>
+    <section className="rounded-2xl border border-[#c89f55]/45 bg-gradient-to-b from-[#1e140d]/96 to-[#2a1a10]/96 p-4 shadow-2xl">
+      <div className="rounded-xl border border-[#d5ac63]/55 bg-gradient-to-r from-[#4a2b17]/95 to-[#65381d]/95 px-3 py-2">
+        <p className="text-xs font-semibold text-[#e6c27c] text-balance">Bazaar Ledger</p>
+        <h2 className="mt-1 text-xl font-semibold text-[#fff0d0] text-balance">{title}</h2>
+        <p className="mt-1 text-sm text-[#f2dbab] text-pretty">{subtitle}</p>
       </div>
       <div className="mt-3 space-y-3">{children}</div>
     </section>
@@ -83,8 +93,8 @@ function TabButton({
       className={cn(
         "rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors",
         active
-          ? "border-amber-200/70 bg-amber-200/20 text-amber-50"
-          : "border-amber-200/30 bg-[#2b1e12] text-amber-100/85 hover:border-amber-200/55 hover:bg-[#3b2a19]",
+          ? "border-[#e5c98c] bg-gradient-to-r from-[#6f2d18] to-[#8a3f20] text-[#fff0d0]"
+          : "border-[#b78d4a]/45 bg-[#2f1c12] text-[#efdbb2] hover:border-[#d7b56f] hover:bg-[#3d2416]",
       )}
       onClick={onClick}
       type="button"
@@ -108,9 +118,9 @@ function MerchantListingCard({
   onCancel(): void;
 }) {
   return (
-    <article className="rounded-xl border border-amber-200/25 bg-[#2b1e12]/90 p-3">
+    <article className="rounded-xl border border-[#bb9452]/40 bg-[#2d1a11]/90 p-3">
       <div className="flex items-start gap-3">
-        <div className="size-16 overflow-hidden rounded-lg border border-amber-200/30 bg-[#4a3522]">
+        <div className="size-16 overflow-hidden rounded-lg border border-[#c79e54]/45 bg-[#4a301d]">
           {listing.imageUrl ? (
             <img
               alt={listing.tokenName}
@@ -120,28 +130,28 @@ function MerchantListingCard({
           ) : null}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-amber-50">{listing.tokenName}</p>
-          <p className="text-xs text-amber-100/75 text-pretty">
+          <p className="truncate text-sm font-semibold text-[#fff0d0]">{listing.tokenName}</p>
+          <p className="text-xs text-[#e6cda0] text-pretty">
             {listing.collectionName} · #{listing.tokenId}
           </p>
-          <p className="mt-1 text-sm font-medium text-amber-200 tabular-nums">
+          <p className="mt-1 text-sm font-medium text-[#f0c66f] tabular-nums">
             {Number(formatEther(BigInt(listing.priceWei))).toFixed(4)} ETH
           </p>
-          <p className="text-xs text-amber-100/70">{shortAddress(listing.seller)}</p>
+          <p className="text-xs text-[#ceb888]">{shortAddress(listing.seller)}</p>
         </div>
       </div>
       <div className="mt-3">
         {owner ? (
           <ActionButton
-            className="border-rose-300/45 bg-rose-300/18 text-rose-50 hover:border-rose-300/60 hover:bg-rose-300/25"
+            className="border-[#e08a6b]/55 bg-[#5a271f] text-[#ffd9c9] hover:border-[#f2a488] hover:bg-[#703128]"
             disabled={pending}
             onClick={onCancel}
           >
             Cancel listing
           </ActionButton>
         ) : (
-          <ActionButton disabled={pending} onClick={onBuy}>
-            Buy via Seaport
+          <ActionButton className={merchantPrimaryButtonClass} disabled={pending} onClick={onBuy}>
+            Buy item
           </ActionButton>
         )}
       </div>
@@ -154,7 +164,6 @@ export function MerchantPanel() {
   const overlays = useAppStore((state) => state.overlays);
   const setOverlay = useAppStore((state) => state.setOverlay);
   const setMerchantTab = useAppStore((state) => state.setMerchantTab);
-  const setMerchantMode = useAppStore((state) => state.setMerchantMode);
   const activeChain = useAppStore((state) => state.session.activeChain);
   const currentRoomId = useAppStore((state) => state.session.currentRoomId);
   const localPresence = useAppStore((state) => state.presence.local);
@@ -171,7 +180,6 @@ export function MerchantPanel() {
   const isOwner = Boolean(addressLower && selectedSeller && addressLower === selectedSeller);
   const activeTab: MerchantTab =
     isOwner ? ((overlays.merchantTab as MerchantTab | undefined) ?? "my-listings") : "browse";
-  const mode = overlays.merchantMode ?? selectedShop?.mode ?? "clone";
 
   const nftQuery = useQuery({
     enabled: Boolean(isOwner && address),
@@ -249,7 +257,6 @@ export function MerchantPanel() {
         address,
         chain: activeChain,
         roomId: currentRoomId,
-        mode,
         anchor: localPresence?.position ?? selectedShop?.anchor ?? { x: 0, y: 1.2, z: 0 },
         listings: [...(selectedShop?.listings ?? []), listing],
       });
@@ -274,7 +281,6 @@ export function MerchantPanel() {
         address,
         chain: activeChain,
         roomId: currentRoomId,
-        mode,
         anchor: localPresence?.position ?? selectedShop?.anchor ?? { x: 0, y: 1.2, z: 0 },
         listings: result.listings,
       });
@@ -358,9 +364,9 @@ export function MerchantPanel() {
   const listings = selectedShop?.listings ?? [];
   const panelTitle = isOwner ? "Your Merchant Stall" : "Merchant Stall";
   const panelSubtitle = isOwner
-    ? "Manage your grouped listings and sync existing OpenSea asks."
+    ? "Manage your merchant stall and sync existing OpenSea asks."
     : selectedShop
-      ? `Inspect items from ${shortAddress(selectedShop.seller)} and buy through Seaport.`
+      ? `Inspect items from ${shortAddress(selectedShop.seller)} and buy directly from the stall.`
       : "No nearby merchant listings.";
 
   return (
@@ -382,21 +388,11 @@ export function MerchantPanel() {
             label="Create Listing"
             onClick={() => setMerchantTab("create")}
           />
-          <TabButton
-            active={mode === "clone"}
-            label="Clone Mode"
-            onClick={() => setMerchantMode("clone")}
-          />
-          <TabButton
-            active={mode === "mobile"}
-            label="Mobile Mode"
-            onClick={() => setMerchantMode("mobile")}
-          />
         </div>
       ) : null}
 
       {!selectedShop ? (
-        <p className="rounded-xl border border-amber-200/25 bg-[#2b1e12]/90 px-3 py-2 text-sm text-amber-100/80 text-pretty">
+        <p className="rounded-xl border border-[#bb9452]/40 bg-[#2d1a11]/90 px-3 py-2 text-sm text-[#ebd4a8] text-pretty">
           Merchant has no active listings right now.
         </p>
       ) : null}
@@ -404,7 +400,7 @@ export function MerchantPanel() {
       {selectedShop && (activeTab === "browse" || activeTab === "my-listings") ? (
         <div className="space-y-2">
           {listings.length === 0 ? (
-            <p className="rounded-xl border border-amber-200/25 bg-[#2b1e12]/90 px-3 py-2 text-sm text-amber-100/80 text-pretty">
+            <p className="rounded-xl border border-[#bb9452]/40 bg-[#2d1a11]/90 px-3 py-2 text-sm text-[#ebd4a8] text-pretty">
               No active listings.
             </p>
           ) : (
@@ -423,12 +419,16 @@ export function MerchantPanel() {
       ) : null}
 
       {isOwner && activeTab === "import" ? (
-        <div className="rounded-xl border border-amber-200/25 bg-[#2b1e12]/90 p-3">
-          <p className="text-sm text-amber-100/85 text-pretty">
+        <div className="rounded-xl border border-[#bb9452]/40 bg-[#2d1a11]/90 p-3">
+          <p className="text-sm text-[#ebd4a8] text-pretty">
             Pull your active OpenSea listings on this island chain and merge them into your merchant stall.
           </p>
           <div className="mt-3">
-            <ActionButton disabled={importMutation.isPending} onClick={() => importMutation.mutate()}>
+            <ActionButton
+              className={merchantUtilityButtonClass}
+              disabled={importMutation.isPending}
+              onClick={() => importMutation.mutate()}
+            >
               {importMutation.isPending ? "Syncing..." : "Sync OpenSea Listings"}
             </ActionButton>
           </div>
@@ -436,29 +436,42 @@ export function MerchantPanel() {
       ) : null}
 
       {isOwner && activeTab === "create" ? (
-        <div className="space-y-3 rounded-xl border border-amber-200/25 bg-[#2b1e12]/90 p-3">
+        <div className="space-y-3 rounded-xl border border-[#bb9452]/40 bg-[#2d1a11]/90 p-3">
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-amber-200/80">NFT</span>
-            <select
-              className="w-full rounded-lg border border-amber-200/35 bg-[#3b2a19] px-3 py-2 text-sm text-amber-50"
-              onChange={(event) => setSelectedNftKey(event.target.value)}
-              value={selectedNftKey ?? ""}
+            <span className="mb-1 block text-xs font-medium text-[#f0c66f]">NFT</span>
+            <Select
+              onValueChange={(value) => setSelectedNftKey(value === "__merchant_nft_empty__" ? undefined : value)}
+              value={selectedNftKey ?? "__merchant_nft_empty__"}
             >
-              <option value="">Select wallet NFT</option>
-              {nfts.map((nft) => {
-                const value = `${nft.contractAddress.toLowerCase()}:${nft.tokenId}`;
-                return (
-                  <option key={value} value={value}>
-                    {nft.collectionName} · {nft.tokenName}
-                  </option>
-                );
-              })}
-            </select>
+              <SelectTrigger className="border-[#c79e54]/55 bg-[#4a2c18] text-[#fff0d0] hover:border-[#d7b56f] focus:border-[#e5c98c] focus-visible:ring-[#e5c98c]/25">
+                <SelectValue placeholder="Select wallet NFT" />
+              </SelectTrigger>
+              <SelectContent className="border-[#c79e54]/65 bg-[#2f1c12]/96 text-[#fff0d0]">
+                <SelectItem
+                  className="focus:bg-[#5f3a21] focus:text-[#fff2d5]"
+                  value="__merchant_nft_empty__"
+                >
+                  Select wallet NFT
+                </SelectItem>
+                {nfts.map((nft) => {
+                  const value = `${nft.contractAddress.toLowerCase()}:${nft.tokenId}`;
+                  return (
+                    <SelectItem
+                      className="focus:bg-[#5f3a21] focus:text-[#fff2d5]"
+                      key={value}
+                      value={value}
+                    >
+                      {nft.collectionName} · {nft.tokenName}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-amber-200/80">Price (ETH)</span>
+            <span className="mb-1 block text-xs font-medium text-[#f0c66f]">Price (ETH)</span>
             <input
-              className="w-full rounded-lg border border-amber-200/35 bg-[#3b2a19] px-3 py-2 text-sm text-amber-50"
+              className="w-full rounded-lg border border-[#c79e54]/55 bg-[#4a2c18] px-3 py-2 text-sm text-[#fff0d0] outline-none placeholder:text-[#d5bf94] focus:border-[#e5c98c]"
               inputMode="decimal"
               onChange={(event) => setPriceInput(event.target.value)}
               placeholder="0.10"
@@ -467,10 +480,11 @@ export function MerchantPanel() {
             />
           </label>
           <ActionButton
+            className={merchantPrimaryButtonClass}
             disabled={createListingMutation.isPending || nftQuery.isPending}
             onClick={() => createListingMutation.mutate()}
           >
-            {createListingMutation.isPending ? "Signing order..." : "Create Seaport Listing"}
+            {createListingMutation.isPending ? "Signing order..." : "Create listing"}
           </ActionButton>
         </div>
       ) : null}
