@@ -5,13 +5,21 @@ function optionalEnvAddress(value: string | undefined) {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function normalizePartyHost(value: string | undefined) {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) {
+    return "localhost:1999";
+  }
+  return trimmed.replace(/^(https?|wss?):\/\//i, "").replace(/\/+$/, "");
+}
+
 export const env = {
   privyAppId: import.meta.env.VITE_PRIVY_APP_ID ?? "",
   privyClientId: import.meta.env.VITE_PRIVY_CLIENT_ID ?? "",
   profile: import.meta.env.VITE_CRYPTO_WORLD_PROFILE ?? "mainnet",
   acrossIntegratorId: import.meta.env.VITE_ACROSS_INTEGRATOR_ID ?? "0x0000",
   apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000",
-  partyHost: import.meta.env.VITE_PARTYKIT_HOST ?? "localhost:1999",
+  partyHost: normalizePartyHost(import.meta.env.VITE_PARTYKIT_HOST),
   ethereumRpcUrl: import.meta.env.VITE_ETHEREUM_RPC_URL ?? "",
   baseRpcUrl: import.meta.env.VITE_BASE_RPC_URL ?? "",
   polygonRpcUrl: import.meta.env.VITE_POLYGON_RPC_URL ?? "",

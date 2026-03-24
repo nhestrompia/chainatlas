@@ -134,6 +134,7 @@ export const Avatar = memo(function Avatar({
   const activeChain = useAppStore((state) => state.session.activeChain);
   const minions = useAppStore((state) => state.minions.list);
   const currentRoomId = useAppStore((state) => state.session.currentRoomId);
+  const localPresence = useAppStore((state) => state.presence.local);
   const avatarRef = useRef<Group>(null);
   const cameraAnchorRef = useRef(new Vector3());
   const lookTargetRef = useRef(new Vector3());
@@ -164,6 +165,7 @@ export const Avatar = memo(function Avatar({
   );
   const [gateSwitching, setGateSwitching] = useState(false);
   const [gateSwitchError, setGateSwitchError] = useState<string>();
+  const [localShoutText, setLocalShoutText] = useState<string>();
   const [targetPortalChain, setTargetPortalChain] = useState<ChainSlug>("base");
   const [currentZoneId, setCurrentZoneId] = useState<string>();
   const currentZone = useMemo(
@@ -493,6 +495,24 @@ export const Avatar = memo(function Avatar({
     setOverlay,
     setPredictionSelectedMarket,
   ]);
+
+  useEffect(() => {
+    if (
+      typeof localPresence?.shoutText !== "string" ||
+      typeof localPresence.shoutExpiresAt !== "number" ||
+      localPresence.shoutExpiresAt <= Date.now()
+    ) {
+      setLocalShoutText(undefined);
+      return;
+    }
+
+    setLocalShoutText(localPresence.shoutText);
+    const timeoutMs = Math.max(0, localPresence.shoutExpiresAt - Date.now());
+    const timeoutId = window.setTimeout(() => {
+      setLocalShoutText(undefined);
+    }, timeoutMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [localPresence?.shoutExpiresAt, localPresence?.shoutText]);
 
   useEffect(() => {
     if (!avatarRef.current || hasSpawnedRef.current) {
@@ -825,6 +845,13 @@ export const Avatar = memo(function Avatar({
     <group ref={avatarRef}>
       <AvatarBody avatarId={avatarId} isMoving={isMoving} />
       <AvatarNameTag label={displayName} visible={labelsVisible} />
+      {labelsVisible && localShoutText ? (
+        <Html position={[0, 3.2, 0]} center>
+          <p className="pointer-events-none px-2 text-center text-[13px] font-semibold text-cyan-50 drop-shadow-[0_1px_8px_rgba(0,0,0,0.75)]">
+            {localShoutText}
+          </p>
+        </Html>
+      ) : null}
       <TokenMinions
         labelsVisible={labelsVisible}
         minions={minions}

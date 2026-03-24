@@ -23,7 +23,7 @@ const SHOUT_MIN_DURATION_MS = 3_000;
 const SHOUT_MAX_DURATION_MS = 6_000;
 const MERCHANT_INDEX_STORAGE_KEY = "merchant:index";
 const MERCHANT_STORAGE_PREFIX = "merchant:shop:";
-const MERCHANT_LISTING_LIMIT = 5;
+const MERCHANT_LISTING_LIMIT = 8;
 const BOUNDS = {
   minX: -64,
   maxX: 64,
@@ -356,6 +356,7 @@ export default class ChainAtlasRoom implements Party.Server {
             payload: { seller: normalized.seller, listingId: "*" },
           }),
         );
+        this.broadcastMerchantSnapshot();
         return;
       }
 
@@ -367,6 +368,7 @@ export default class ChainAtlasRoom implements Party.Server {
           payload: { shop: nextShop },
         }),
       );
+      this.broadcastMerchantSnapshot();
       return;
     }
 
@@ -415,6 +417,7 @@ export default class ChainAtlasRoom implements Party.Server {
           },
         }),
       );
+      this.broadcastMerchantSnapshot();
       return;
     }
 
@@ -452,6 +455,7 @@ export default class ChainAtlasRoom implements Party.Server {
           },
         }),
       );
+      this.broadcastMerchantSnapshot();
     }
   }
 
@@ -481,7 +485,13 @@ export default class ChainAtlasRoom implements Party.Server {
   }
 
   private getRoomChain() {
-    return this.party.id.startsWith("base:") ? "base" : "ethereum";
+    if (this.party.id.startsWith("base:")) {
+      return "base";
+    }
+    if (this.party.id.startsWith("polygon:")) {
+      return "polygon";
+    }
+    return "ethereum";
   }
 
   private getSerializedMerchants(now = Date.now()) {
@@ -497,6 +507,15 @@ export default class ChainAtlasRoom implements Party.Server {
       });
     }
     return shops;
+  }
+
+  private broadcastMerchantSnapshot() {
+    this.party.broadcast(
+      serialize({
+        type: "merchant:snapshot",
+        payload: { shops: this.getSerializedMerchants() },
+      }),
+    );
   }
 
   private normalizeShop(shop: MerchantShop): MerchantShop | undefined {
@@ -539,7 +558,8 @@ export default class ChainAtlasRoom implements Party.Server {
       mode: "clone",
       anchor: shop.anchor,
       updatedAt: Date.now(),
-      listings: clampListings([...chainatlasListings, ...externalListings]),
+      // Keep local ChainAtlas listing metadata (image/price/order payload) when hashes collide.
+      listings: clampListings([...externalListings, ...chainatlasListings]),
     };
     return merged;
   }

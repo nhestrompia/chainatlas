@@ -23,7 +23,7 @@ describe("shared domain schemas", () => {
     expect(job.status).toBe("prove_required");
   });
 
-  it("accepts valid merchant shops with up to five listings", () => {
+  it("accepts valid merchant shops with up to eight listings", () => {
     const now = Date.now();
     const shop = merchantShopSchema.parse({
       seller: "0x000000000000000000000000000000000000dEaD",
@@ -32,7 +32,7 @@ describe("shared domain schemas", () => {
       mode: "clone",
       anchor: { x: -40, y: 1.2, z: 12 },
       updatedAt: now,
-      listings: Array.from({ length: 5 }, (_, index) => ({
+      listings: Array.from({ length: 8 }, (_, index) => ({
         listingId: `listing_${index}`,
         source: "chainatlas",
         status: "active",
@@ -49,10 +49,10 @@ describe("shared domain schemas", () => {
       })),
     });
 
-    expect(shop.listings).toHaveLength(5);
+    expect(shop.listings).toHaveLength(8);
   });
 
-  it("rejects merchant shops with more than five listings", () => {
+  it("rejects merchant shops with more than eight listings", () => {
     const now = Date.now();
     expect(() =>
       merchantShopSchema.parse({
@@ -62,7 +62,7 @@ describe("shared domain schemas", () => {
         mode: "clone",
         anchor: { x: -40, y: 1.2, z: 12 },
         updatedAt: now,
-        listings: Array.from({ length: 6 }, (_, index) => ({
+        listings: Array.from({ length: 9 }, (_, index) => ({
           listingId: `listing_${index}`,
           source: "chainatlas",
           status: "active",

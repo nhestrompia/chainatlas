@@ -76,6 +76,18 @@ app.get("/market/opensea/listings/:address", async (request, reply) => {
   return reply.send(payload);
 });
 
+app.get("/market/opensea/fees/:contract/:tokenId", async (request, reply) => {
+  const params = request.params as { contract: string; tokenId: string };
+  const query = request.query as { chain?: string };
+  const chain = chainSlugSchema.parse(query.chain);
+  const payload = await dataService.getOpenSeaRequiredFees({
+    chain,
+    nftContract: params.contract,
+    tokenId: params.tokenId,
+  });
+  return reply.send(payload);
+});
+
 const openSeaFulfillmentRequestSchema = z.object({
   chain: chainSlugSchema,
   orderHash: z.string().regex(/^0x[a-fA-F0-9]+$/),
@@ -84,6 +96,25 @@ const openSeaFulfillmentRequestSchema = z.object({
     .regex(/^0x[a-fA-F0-9]{40}$/)
     .optional(),
   fulfiller: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  nftContract: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/)
+    .optional(),
+  tokenId: z.string().min(1).optional(),
+});
+
+const openSeaPublishListingRequestSchema = z.object({
+  chain: chainSlugSchema,
+  order: z.object({
+    parameters: z.record(z.unknown()),
+    signature: z.string().regex(/^0x[a-fA-F0-9]+$/),
+  }),
+});
+
+app.post("/market/opensea/listings", async (request, reply) => {
+  const body = openSeaPublishListingRequestSchema.parse(request.body);
+  const payload = await dataService.createOpenSeaListing(body);
+  return reply.send(payload);
 });
 
 app.post("/market/opensea/fulfillment", async (request, reply) => {

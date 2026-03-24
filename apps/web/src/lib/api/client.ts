@@ -19,7 +19,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    let message = `Request failed: ${response.status}`;
+    try {
+      const payload = (await response.json()) as {
+        message?: string;
+      };
+      if (typeof payload?.message === "string" && payload.message.length > 0) {
+        message = `Request failed: ${response.status} (${payload.message})`;
+      }
+    } catch {
+      // Keep default message when error body is not JSON.
+    }
+    throw new Error(message);
   }
 
   return response.json() as Promise<T>;
@@ -43,6 +54,7 @@ export type WalletNft = {
   collectionName: string;
   tokenName: string;
   imageUrl?: string;
+  tokenStandard?: "erc721" | "erc1155" | "unknown";
 };
 
 export type WalletNftsResponse = {
@@ -76,11 +88,51 @@ export function fetchOpenSeaListings(
   );
 }
 
+export type OpenSeaRequiredFeesResponse = {
+  collection?: string;
+  fees: Array<{
+    recipient: string;
+    basisPoints: number;
+  }>;
+};
+
+export function fetchOpenSeaRequiredFees(
+  chain: ChainSlug,
+  nftContract: string,
+  tokenId: string,
+) {
+  const params = new URLSearchParams({ chain });
+  return request<OpenSeaRequiredFeesResponse>(
+    `/market/opensea/fees/${encodeURIComponent(nftContract)}/${encodeURIComponent(tokenId)}?${params.toString()}`,
+  );
+}
+
+export type OpenSeaPublishListingRequest = {
+  chain: ChainSlug;
+  order: {
+    parameters: Record<string, unknown>;
+    signature: string;
+  };
+};
+
+export type OpenSeaPublishListingResponse = {
+  orderHash?: string;
+};
+
+export function publishOpenSeaListing(requestBody: OpenSeaPublishListingRequest) {
+  return request<OpenSeaPublishListingResponse>("/market/opensea/listings", {
+    method: "POST",
+    body: JSON.stringify(requestBody),
+  });
+}
+
 export type OpenSeaFulfillmentRequest = {
   chain: ChainSlug;
   orderHash: string;
   fulfiller: string;
   protocolAddress?: string;
+  nftContract?: string;
+  tokenId?: string;
 };
 
 export type OpenSeaFulfillmentResponse = {
@@ -90,12 +142,24 @@ export type OpenSeaFulfillmentResponse = {
   data: string;
 };
 
+const OPENSEA_PROTOCOL_ADDRESS_BY_CHAIN: Record<ChainSlug, string> = {
+  ethereum: "0x0000000000000068F116a894984e2DB1123eB395",
+  base: "0x0000000000000068F116a894984e2DB1123eB395",
+  polygon: "0x0000000000000068F116a894984e2DB1123eB395",
+};
+
 export function fetchOpenSeaFulfillment(
   requestBody: OpenSeaFulfillmentRequest,
 ) {
+  const body: OpenSeaFulfillmentRequest = {
+    ...requestBody,
+    protocolAddress:
+      requestBody.protocolAddress ??
+      OPENSEA_PROTOCOL_ADDRESS_BY_CHAIN[requestBody.chain],
+  };
   return request<OpenSeaFulfillmentResponse>("/market/opensea/fulfillment", {
     method: "POST",
-    body: JSON.stringify(requestBody),
+    body: JSON.stringify(body),
   });
 }
 

@@ -112,7 +112,7 @@ describe("ChainAtlasRoom", () => {
     expect(connection.sent.some((message) => message.includes("presence:joined"))).toBe(true);
   });
 
-  it("includes merchant shops in room snapshot and enforces five-listing cap", async () => {
+  it("includes merchant shops in room snapshot and enforces eight-listing cap", async () => {
     const party = createParty();
     const room = new ChainAtlasRoom(party as never);
     const connection = createConnection("conn_3");
@@ -149,7 +149,7 @@ describe("ChainAtlasRoom", () => {
             mode: "clone",
             anchor: { x: -12, y: 1, z: 8 },
             updatedAt: Date.now(),
-            listings: Array.from({ length: 5 }, (_, index) => ({
+            listings: Array.from({ length: 8 }, (_, index) => ({
               listingId: `listing_${index}`,
               source: "chainatlas",
               status: "active",
@@ -177,6 +177,6 @@ describe("ChainAtlasRoom", () => {
     const parsed = JSON.parse(upsertMessage ?? "{}") as {
       payload?: { shop?: { listings?: unknown[] } };
     };
-    expect(parsed.payload?.shop?.listings?.length).toBe(5);
+    expect(parsed.payload?.shop?.listings?.length).toBe(8);
   });
 });

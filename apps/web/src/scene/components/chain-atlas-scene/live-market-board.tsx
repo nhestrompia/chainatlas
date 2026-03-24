@@ -7,7 +7,7 @@ const BINANCE_MINI_TICKER_STREAM_URL =
   "wss://stream.binance.com:9443/stream?streams=btcusdt@miniTicker/ethusdt@miniTicker/bnbusdt@miniTicker/solusdt@miniTicker";
 const MAX_RECONNECT_DELAY_MS = 10_000;
 const RECONNECT_BASE_DELAY_MS = 1_000;
-const BOARD_ANCHOR: [number, number, number] = [0, 10, -90];
+const BOARD_ANCHOR: [number, number, number] = [0, 10, -40];
 const BOARD_WIDTH = 36;
 const BOARD_HEIGHT = 24;
 const BOARD_BASE_ROTATION_Y = 0;
@@ -244,7 +244,11 @@ export function LiveMarketBoard3D() {
     }
 
     const elapsed = clock.getElapsedTime();
-    boardRef.current.position.set(BOARD_ANCHOR[0], BOARD_ANCHOR[1], BOARD_ANCHOR[2]);
+    boardRef.current.position.set(
+      BOARD_ANCHOR[0],
+      BOARD_ANCHOR[1],
+      BOARD_ANCHOR[2],
+    );
     boardRef.current.rotation.set(
       BOARD_TILT_X,
       BOARD_BASE_ROTATION_Y,
@@ -284,13 +288,31 @@ export function LiveMarketBoard3D() {
           roughness={0.5}
         />
       </mesh>
-      <mesh castShadow receiveShadow position={[-8.8, -8.4, -2.5]} rotation={[0.44, 0, 0]}>
+      <mesh
+        castShadow
+        receiveShadow
+        position={[-8.8, -8.4, -2.5]}
+        rotation={[0.44, 0, 0]}
+      >
         <boxGeometry args={[1.1, 18.6, 1.1]} />
-        <meshStandardMaterial color="#52606d" metalness={0.35} roughness={0.42} />
+        <meshStandardMaterial
+          color="#52606d"
+          metalness={0.35}
+          roughness={0.42}
+        />
       </mesh>
-      <mesh castShadow receiveShadow position={[8.8, -8.4, -2.5]} rotation={[0.44, 0, 0]}>
+      <mesh
+        castShadow
+        receiveShadow
+        position={[8.8, -8.4, -2.5]}
+        rotation={[0.44, 0, 0]}
+      >
         <boxGeometry args={[1.1, 18.6, 1.1]} />
-        <meshStandardMaterial color="#52606d" metalness={0.35} roughness={0.42} />
+        <meshStandardMaterial
+          color="#52606d"
+          metalness={0.35}
+          roughness={0.42}
+        />
       </mesh>
       <mesh castShadow receiveShadow position={[0, -1.8, -3.2]}>
         <boxGeometry args={[28, 1.8, 2.2]} />
@@ -339,7 +361,12 @@ export function LiveMarketBoard3D() {
           />
         </mesh>
 
-        <mesh castShadow receiveShadow position={[0, 13.4, 1.65]} rotation={[-0.1, 0, 0]}>
+        <mesh
+          castShadow
+          receiveShadow
+          position={[0, 13.4, 1.65]}
+          rotation={[-0.1, 0, 0]}
+        >
           <boxGeometry args={[BOARD_WIDTH + 2.4, 1.3, 3.2]} />
           <meshStandardMaterial
             color="#4d5b6a"
@@ -373,16 +400,28 @@ export function LiveMarketBoard3D() {
 
         <mesh castShadow receiveShadow position={[0, 0, -2.55]}>
           <boxGeometry args={[6.5, BOARD_HEIGHT + 0.8, 0.7]} />
-          <meshStandardMaterial color="#171e27" metalness={0.34} roughness={0.56} />
+          <meshStandardMaterial
+            color="#171e27"
+            metalness={0.34}
+            roughness={0.56}
+          />
         </mesh>
 
         <mesh castShadow receiveShadow position={[-12.6, 0, 0.95]}>
           <boxGeometry args={[0.5, BOARD_HEIGHT + 1.2, 4.6]} />
-          <meshStandardMaterial color="#2f3945" metalness={0.4} roughness={0.38} />
+          <meshStandardMaterial
+            color="#2f3945"
+            metalness={0.4}
+            roughness={0.38}
+          />
         </mesh>
         <mesh castShadow receiveShadow position={[12.6, 0, 0.95]}>
           <boxGeometry args={[0.5, BOARD_HEIGHT + 1.2, 4.6]} />
-          <meshStandardMaterial color="#2f3945" metalness={0.4} roughness={0.38} />
+          <meshStandardMaterial
+            color="#2f3945"
+            metalness={0.4}
+            roughness={0.38}
+          />
         </mesh>
 
         <mesh position={[17.9, 10.1, 2.95]}>
@@ -438,8 +477,12 @@ export function LiveMarketBoard3D() {
         {TRACKED_COINS.map((coin, index) => {
           const y = 5.2 - index * 4.0;
           const ticker = tickers[coin.symbol];
-          const priceText = ticker ? `$${formatPrice(ticker.price)}` : "LOADING";
-          const changeText = ticker ? formatPercent(ticker.changePercent) : "--";
+          const priceText = ticker
+            ? `$${formatPrice(ticker.price)}`
+            : "LOADING";
+          const changeText = ticker
+            ? formatPercent(ticker.changePercent)
+            : "--";
 
           return (
             <group key={coin.symbol}>
@@ -455,7 +498,11 @@ export function LiveMarketBoard3D() {
               </mesh>
               <mesh castShadow receiveShadow position={[-16.15, y, 2.9]}>
                 <boxGeometry args={[0.2, 2.72, 1.1]} />
-                <meshStandardMaterial color="#34506a" emissive="#223a50" emissiveIntensity={0.16} />
+                <meshStandardMaterial
+                  color="#34506a"
+                  emissive="#223a50"
+                  emissiveIntensity={0.16}
+                />
               </mesh>
               <Text
                 anchorX="left"
@@ -486,18 +533,18 @@ export function LiveMarketBoard3D() {
               </Text>
               {index < TRACKED_COINS.length - 1 ? (
                 <mesh position={[0, y - 2.0, 3.06]}>
-                <boxGeometry args={[31.2, 0.16, 0.24]} />
-                <meshStandardMaterial
-                  color="#2b3746"
-                  emissive="#1d2732"
-                  emissiveIntensity={0.14}
-                  metalness={0.22}
-                  roughness={0.44}
-                />
-              </mesh>
-            ) : null}
-          </group>
-        );
+                  <boxGeometry args={[31.2, 0.16, 0.24]} />
+                  <meshStandardMaterial
+                    color="#2b3746"
+                    emissive="#1d2732"
+                    emissiveIntensity={0.14}
+                    metalness={0.22}
+                    roughness={0.44}
+                  />
+                </mesh>
+              ) : null}
+            </group>
+          );
         })}
       </group>
     </group>

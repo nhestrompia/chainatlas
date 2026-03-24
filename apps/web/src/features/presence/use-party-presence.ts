@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import usePartySocket from "partysocket/react";
+import { toast } from "sonner";
 import { serverMessageSchema, type PresenceSnapshot } from "@chainatlas/shared";
 import { env } from "@/lib/config/env";
 import { useAppStore } from "@/lib/store/app-store";
@@ -81,6 +82,16 @@ export function usePartyPresence() {
       }
       if (message.type === "merchant:listing-removed") {
         removeMerchantListing(message.payload.seller, message.payload.listingId);
+      }
+      if (message.type === "merchant:error") {
+        toast.error("Merchant update failed", {
+          description: message.payload.message,
+        });
+      }
+      if (message.type === "room:error") {
+        toast.error("Realtime room error", {
+          description: message.payload.message,
+        });
       }
     },
   });

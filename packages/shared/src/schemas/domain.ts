@@ -123,12 +123,14 @@ export const merchantListingSchema = z.object({
 
 export const merchantShopSchema = z.object({
   seller: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  sellerDisplayName: z.string().min(1).optional(),
+  sellerAvatarId: avatarIdSchema.optional(),
   chain: chainSlugSchema,
   roomId: worldRoomIdSchema,
   mode: merchantModeSchema,
   anchor: vector3Schema,
   updatedAt: z.number().int().nonnegative(),
-  listings: z.array(merchantListingSchema).max(5),
+  listings: z.array(merchantListingSchema).max(8),
 });
 
 export const transactionIntentSchema = z.object({

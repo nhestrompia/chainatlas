@@ -152,6 +152,8 @@ export interface MerchantListing {
 
 export interface MerchantShop {
   seller: string;
+  sellerDisplayName?: string;
+  sellerAvatarId?: AvatarId;
   chain: ChainSlug;
   roomId: WorldRoomId;
   mode: MerchantMode;

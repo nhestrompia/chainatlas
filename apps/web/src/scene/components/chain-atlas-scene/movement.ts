@@ -5,12 +5,12 @@ import {
   COLLISION_PUSH_BIAS,
   OBSTACLE_CIRCLES,
   OBSTACLE_RECTS,
-  type RectArea,
-  type RotatedRectArea,
-  type ZoneConfig,
   WALKABLE_CIRCLES,
   WALKABLE_RECTS,
   WALKABLE_ROTATED_RECTS,
+  type RectArea,
+  type RotatedRectArea,
+  type ZoneConfig,
 } from "./config";
 
 function isInsideCircle(

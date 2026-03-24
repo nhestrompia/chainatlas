@@ -83,6 +83,7 @@ export function WorldExperience() {
     [address, merchantShops],
   );
   const externalSyncKeysRef = useRef<Set<string>>(new Set());
+  const externalSyncInFlightRef = useRef<Set<string>>(new Set());
   const observedBridgeStatusesRef = useRef<Map<string, string>>(new Map());
 
   const ensNameQuery = useQuery({
@@ -509,6 +510,15 @@ export function WorldExperience() {
   }, [authenticated, clearLocalPresence, selectedAvatar, walletConnected]);
 
   const displayName = ensNameQuery.data ?? shortenIdentity(address);
+  const normalizedAddress = address?.toLowerCase();
+  const serverPresenceReady = useMemo(() => {
+    if (!normalizedAddress) {
+      return false;
+    }
+    return Object.values(remotePresence).some(
+      (presence) => presence.address.toLowerCase() === normalizedAddress,
+    );
+  }, [normalizedAddress, remotePresence]);
   const needsManualChainSelection =
     walletConnected &&
     authenticated &&
@@ -561,18 +571,24 @@ export function WorldExperience() {
       partySocket.readyState !== 1 ||
       !walletConnected ||
       !authenticated ||
-      !address
+      !address ||
+      !localPresence?.address ||
+      localPresence.address.toLowerCase() !== address.toLowerCase() ||
+      !serverPresenceReady
     ) {
       return;
     }
     const syncKey = `${address.toLowerCase()}:${activeChain}:${currentRoomId}`;
-    if (externalSyncKeysRef.current.has(syncKey)) {
+    if (
+      externalSyncKeysRef.current.has(syncKey) ||
+      externalSyncInFlightRef.current.has(syncKey)
+    ) {
       return;
     }
 
     let cancelled = false;
     const syncListingsOnce = async () => {
-      externalSyncKeysRef.current.add(syncKey);
+      externalSyncInFlightRef.current.add(syncKey);
       try {
         const result = await fetchOpenSeaListings(address, activeChain, 20);
         if (cancelled) {
@@ -584,6 +600,8 @@ export function WorldExperience() {
             payload: {
               shop: {
                 seller: address,
+                sellerDisplayName: displayName,
+                sellerAvatarId: selectedAvatar ?? ownMerchantShop?.sellerAvatarId,
                 chain: activeChain,
                 roomId: currentRoomId,
                 mode: ownMerchantShop?.mode ?? "clone",
@@ -598,8 +616,11 @@ export function WorldExperience() {
             },
           }),
         );
+        externalSyncKeysRef.current.add(syncKey);
       } catch {
         // Keep UI live even if OpenSea throttles.
+      } finally {
+        externalSyncInFlightRef.current.delete(syncKey);
       }
     };
 
@@ -612,7 +633,12 @@ export function WorldExperience() {
     address,
     authenticated,
     currentRoomId,
+    displayName,
+    localPresence?.address,
+    serverPresenceReady,
+    selectedAvatar,
     ownMerchantShop?.anchor,
+    ownMerchantShop?.sellerAvatarId,
     ownMerchantShop?.mode,
     partySocket,
     walletConnected,

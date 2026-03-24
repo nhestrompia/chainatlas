@@ -471,6 +471,23 @@ export const WALKABLE_RECTS: RectArea[] = [
   },
 ];
 
+export const WALKABLE_ROTATED_RECTS: RotatedRectArea[] = [
+  {
+    x: BRIDGES_BY_ID["eth-polygon"].model.position[0],
+    z: BRIDGES_BY_ID["eth-polygon"].model.position[2],
+    hx: 7,
+    hz: 44,
+    rotationY: BRIDGES_BY_ID["eth-polygon"].model.rotationY,
+  },
+  {
+    x: BRIDGES_BY_ID["base-polygon"].model.position[0],
+    z: BRIDGES_BY_ID["base-polygon"].model.position[2],
+    hx: 7,
+    hz: 44,
+    rotationY: BRIDGES_BY_ID["base-polygon"].model.rotationY,
+  },
+];
+
 export const OBSTACLE_RECTS: RotatedRectArea[] = ALL_BUILDINGS.map(
   (building) => ({
     x: building.obstacle.x ?? building.position[0],

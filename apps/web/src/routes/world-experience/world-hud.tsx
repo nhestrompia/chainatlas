@@ -171,6 +171,9 @@ export function WorldHud() {
     overlays.activeOverlay === "bridge" ||
     overlays.activeOverlay === "prediction";
   const panelWidthClass = useMemo(() => {
+    if (overlays.activeOverlay === "merchant") {
+      return "max-w-[480px]";
+    }
     if (!immersiveActionPanel) {
       return "max-w-[540px]";
     }
@@ -463,7 +466,7 @@ export function WorldHud() {
               className={cn(
                 "absolute right-3 z-10 flex size-8 items-center justify-center rounded-lg border text-base font-semibold leading-none shadow-lg backdrop-blur-xl",
                 overlays.activeOverlay === "merchant"
-                  ? "border-[#c79e54]/65 bg-[#2f1c12]/95 text-[#f8e5bc] hover:bg-[#412717]"
+                  ? "border-[#746949] bg-[#1f2219]/95 text-[#dccaa0] hover:bg-[#2a2d23]"
                   : "border-cyan-100/30 bg-[#08151d]/95 text-cyan-50 hover:bg-[#0d1f2b]",
                 immersiveActionPanel ? "top-2" : "top-3",
               )}
