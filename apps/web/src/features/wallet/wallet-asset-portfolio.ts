@@ -24,6 +24,7 @@ export function resolveChainSlug(value: unknown): ChainSlug | undefined {
   if (typeof value === "number") {
     if (value === 1 || value === 11155111) return "ethereum";
     if (value === 8453 || value === 84532) return "base";
+    if (value === 137 || value === 80002) return "polygon";
     return undefined;
   }
 
@@ -43,6 +44,8 @@ export function resolveChainSlug(value: unknown): ChainSlug | undefined {
     const normalized = value.toLowerCase();
     if (normalized === "ethereum" || normalized === "sepolia") return "ethereum";
     if (normalized === "base" || normalized === "base-sepolia") return "base";
+    if (normalized === "polygon" || normalized === "matic" || normalized === "amoy") return "polygon";
+    if (normalized.includes("polygon") || normalized.includes("matic")) return "polygon";
     if (normalized.includes("base")) return "base";
     if (normalized.includes("ethereum") || normalized.includes("eth") || normalized.includes("sepolia")) {
       return "ethereum";

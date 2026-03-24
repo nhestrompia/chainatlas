@@ -3,6 +3,7 @@ import type {
   ChainSlug,
   MerchantListing,
   PortfolioAsset,
+  PredictionMarket,
   ProtocolRegistryEntry,
 } from "@chainatlas/shared";
 import { env } from "../config/env";
@@ -49,7 +50,11 @@ export type WalletNftsResponse = {
   nextCursor?: string;
 };
 
-export function fetchWalletNfts(address: string, chain: ChainSlug, cursor?: string) {
+export function fetchWalletNfts(
+  address: string,
+  chain: ChainSlug,
+  cursor?: string,
+) {
   const params = new URLSearchParams({ chain });
   if (cursor) {
     params.set("cursor", cursor);
@@ -57,7 +62,11 @@ export function fetchWalletNfts(address: string, chain: ChainSlug, cursor?: stri
   return request<WalletNftsResponse>(`/nfts/${address}?${params.toString()}`);
 }
 
-export function fetchOpenSeaListings(address: string, chain: ChainSlug, limit = 20) {
+export function fetchOpenSeaListings(
+  address: string,
+  chain: ChainSlug,
+  limit = 20,
+) {
   const params = new URLSearchParams({
     chain,
     limit: String(limit),
@@ -81,7 +90,9 @@ export type OpenSeaFulfillmentResponse = {
   data: string;
 };
 
-export function fetchOpenSeaFulfillment(requestBody: OpenSeaFulfillmentRequest) {
+export function fetchOpenSeaFulfillment(
+  requestBody: OpenSeaFulfillmentRequest,
+) {
   return request<OpenSeaFulfillmentResponse>("/market/opensea/fulfillment", {
     method: "POST",
     body: JSON.stringify(requestBody),
@@ -94,4 +105,12 @@ export function createBridgeJob(job: BridgeJob) {
 
 export function patchBridgeJob(id: string, patch: Partial<BridgeJob>) {
   return browserBridgeJobStore.patchJob(id, patch);
+}
+
+export function fetchPredictionMarkets(refreshKey?: string) {
+  const query =
+    typeof refreshKey === "string" && refreshKey.length > 0
+      ? `?refresh=${encodeURIComponent(refreshKey)}`
+      : "";
+  return request<PredictionMarket[]>(`/polymarket/top-markets${query}`);
 }

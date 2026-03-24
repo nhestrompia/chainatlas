@@ -1,3 +1,11 @@
+import { useAppStore } from "@/lib/store/app-store";
+import {
+  type AvatarId,
+  type PresenceSnapshot,
+  type TokenMinion,
+  type Vector3Like,
+  type WorldRoomId,
+} from "@chainatlas/shared";
 import { Sky } from "@react-three/drei";
 import {
   Suspense,
@@ -8,15 +16,10 @@ import {
   useState,
 } from "react";
 import { type Object3D } from "three";
+import { Avatar } from "./avatar-controller";
+import { RemoteAvatar } from "./avatar-primitives";
 import {
-  type AvatarId,
-  type PresenceSnapshot,
-  type TokenMinion,
-  type Vector3Like,
-  type WorldRoomId,
-} from "@chainatlas/shared";
-import { useAppStore } from "@/lib/store/app-store";
-import {
+  type BridgeId,
   PRESENCE_MIN_DISTANCE_DELTA_SQ,
   PRESENCE_MIN_ROTATION_DELTA,
   PRESENCE_PUBLISH_INTERVAL_MS,
@@ -25,11 +28,10 @@ import {
   SOCKET_MINION_LIMIT,
   SOCKET_VISIBLE_SYMBOL_LIMIT,
 } from "./config";
-import { shortestAngleDelta } from "./movement";
-import { Avatar } from "./avatar-controller";
-import { RemoteAvatar } from "./avatar-primitives";
 import { LiveMarketBoard3D } from "./live-market-board";
 import { MerchantShops } from "./merchant-shops";
+import { shortestAngleDelta } from "./movement";
+import { PredictionGates3D } from "./prediction-gates";
 import { WaterPlane, WorldProps, ZonePads } from "./world-props";
 
 export function SceneContent({
@@ -49,7 +51,9 @@ export function SceneContent({
   const [localAvatarPosition, setLocalAvatarPosition] = useState<Vector3Like>(
     ROOM_SPAWNS[session.currentRoomId],
   );
-  const [bridgeGateOpen, setBridgeGateOpen] = useState(false);
+  const [openGates, setOpenGates] = useState<
+    Partial<Record<BridgeId, boolean>>
+  >({});
   const [activeZoneId, setActiveZoneId] = useState<string>();
   const lastPublishedPresenceRef = useRef<
     | {
@@ -100,7 +104,7 @@ export function SceneContent({
     setActiveZoneId(undefined);
   }, [avatarId, session.currentRoomId]);
   useEffect(() => {
-    setBridgeGateOpen(false);
+    setOpenGates({});
   }, [session.currentRoomId]);
   const setGroundSurface = useCallback(
     (surfaceId: string, object?: Object3D) => {
@@ -268,9 +272,10 @@ export function SceneContent({
       <Sky sunPosition={[120, 18, 100]} />
       <WaterPlane />
       <LiveMarketBoard3D />
+      <PredictionGates3D />
       <Suspense fallback={null}>
         <WorldProps
-          bridgeGateOpen={bridgeGateOpen}
+          openGates={openGates}
           currentRoomId={session.currentRoomId}
           labelsVisible={labelsVisible}
           onGroundSurfaceChange={setGroundSurface}
@@ -279,11 +284,11 @@ export function SceneContent({
         {avatarId ? (
           <Avatar
             avatarId={avatarId}
-            bridgeGateOpen={bridgeGateOpen}
+            openGates={openGates}
             displayName={displayName}
             groundSurfaces={groundSurfaces}
             labelsVisible={labelsVisible}
-            onBridgeGateOpenChange={setBridgeGateOpen}
+            onGateOpenChange={setOpenGates}
             onZoneChange={setActiveZoneId}
             onPositionChange={publishPresence}
           />

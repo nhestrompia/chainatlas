@@ -90,9 +90,9 @@ export function ChainSelectionOverlay({
           {typeof chainId === "number"
             ? `Your wallet is on unsupported chain ID ${chainId}.`
             : "We could not confirm your wallet network."}{" "}
-          Switch to Ethereum or Base to enter.
+          Switch to Ethereum, Base, or Polygon to enter.
         </p>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
           <button
             className="rounded-2xl border border-cyan-100/25 bg-cyan-50/8 px-4 py-3 text-left transition-colors hover:border-cyan-100/40 hover:bg-cyan-50/15 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={Boolean(pendingChain)}
@@ -115,14 +115,21 @@ export function ChainSelectionOverlay({
               {runtimeConfig.chains.base.label}
             </p>
           </button>
+          <button
+            className="rounded-2xl border border-cyan-100/25 bg-cyan-50/8 px-4 py-3 text-left transition-colors hover:border-cyan-100/40 hover:bg-cyan-50/15 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={Boolean(pendingChain)}
+            onClick={() => onSelect("polygon")}
+            type="button"
+          >
+            <p className="font-semibold text-cyan-50">Polygon Island</p>
+            <p className="mt-1 text-xs text-cyan-100/75">
+              {runtimeConfig.chains.polygon.label}
+            </p>
+          </button>
         </div>
         {pendingChain ? (
           <p className="mt-4 text-sm text-cyan-100/80">
-            Switching wallet to{" "}
-            {pendingChain === "ethereum"
-              ? runtimeConfig.chains.ethereum.label
-              : runtimeConfig.chains.base.label}
-            ...
+            Switching wallet to {runtimeConfig.chains[pendingChain].label}...
           </p>
         ) : null}
         {error ? (

@@ -10,6 +10,7 @@ import {
   type ZoneConfig,
   WALKABLE_CIRCLES,
   WALKABLE_RECTS,
+  WALKABLE_ROTATED_RECTS,
 } from "./config";
 
 function isInsideCircle(
@@ -26,10 +27,27 @@ function isInsideRect(x: number, z: number, area: RectArea) {
   return Math.abs(x - area.x) <= area.hx && Math.abs(z - area.z) <= area.hz;
 }
 
+function isInsideRotatedRect(x: number, z: number, area: RotatedRectArea) {
+  const rotation = area.rotationY ?? 0;
+  if (rotation === 0) {
+    return isInsideRect(x, z, area);
+  }
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  const relX = x - area.x;
+  const relZ = z - area.z;
+  // perp = perpendicular to bridge axis, forward = along bridge axis
+  // Matches toBridgeLocal convention: forward = relX*sin + relZ*cos
+  const perp = relX * cos - relZ * sin;
+  const forward = relX * sin + relZ * cos;
+  return Math.abs(perp) <= area.hx && Math.abs(forward) <= area.hz;
+}
+
 export function isWalkable(x: number, z: number) {
   return (
     WALKABLE_CIRCLES.some((area) => isInsideCircle(x, z, area)) ||
-    WALKABLE_RECTS.some((area) => isInsideRect(x, z, area))
+    WALKABLE_RECTS.some((area) => isInsideRect(x, z, area)) ||
+    WALKABLE_ROTATED_RECTS.some((area) => isInsideRotatedRect(x, z, area))
   );
 }
 
@@ -168,6 +186,9 @@ export function getOverlayForZone(zone?: ZoneConfig) {
   }
   if (zone.kind === "send") {
     return "send" as const;
+  }
+  if (zone.kind === "prediction") {
+    return "prediction" as const;
   }
   return undefined;
 }

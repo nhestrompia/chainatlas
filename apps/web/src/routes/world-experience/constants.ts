@@ -12,11 +12,13 @@ import char4Img2xUrl from "../../../../char-img/optimized/char4-2x.jpg?url";
 export const NATIVE_CHAIN_IDS: Record<ChainSlug, number> = {
   ethereum: runtimeConfig.chains.ethereum.chainId,
   base: runtimeConfig.chains.base.chainId,
+  polygon: runtimeConfig.chains.polygon.chainId,
 };
 
-export const ROOM_BY_CHAIN: Record<ChainSlug, "ethereum:main" | "base:main"> = {
+export const ROOM_BY_CHAIN: Record<ChainSlug, "ethereum:main" | "base:main" | "polygon:main"> = {
   ethereum: "ethereum:main",
   base: "base:main",
+  polygon: "polygon:main",
 };
 
 export const SHOUT_MAX_CHARS = 80;

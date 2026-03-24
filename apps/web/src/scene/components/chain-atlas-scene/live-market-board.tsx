@@ -7,11 +7,11 @@ const BINANCE_MINI_TICKER_STREAM_URL =
   "wss://stream.binance.com:9443/stream?streams=btcusdt@miniTicker/ethusdt@miniTicker/bnbusdt@miniTicker/solusdt@miniTicker";
 const MAX_RECONNECT_DELAY_MS = 10_000;
 const RECONNECT_BASE_DELAY_MS = 1_000;
-const BOARD_ANCHOR: [number, number, number] = [0, 10, 60];
+const BOARD_ANCHOR: [number, number, number] = [0, 10, -90];
 const BOARD_WIDTH = 36;
 const BOARD_HEIGHT = 24;
-const BOARD_BASE_ROTATION_Y = Math.PI;
-const BOARD_TILT_X = -0.08;
+const BOARD_BASE_ROTATION_Y = 0;
+const BOARD_TILT_X = 0.08;
 const BOARD_TILT_Z = 0;
 
 const TRACKED_COINS = [

@@ -4,6 +4,7 @@ import {
   protocolRegistryEntrySchema,
 } from "@chainatlas/shared";
 import { createApiDataService, type ApiDataEnv } from "./data";
+import { fetchTopPredictionMarkets } from "./polymarket";
 
 type ApiResponseOptions = {
   status?: number;
@@ -61,6 +62,21 @@ export default {
         .listProtocolRegistry()
         .map((entry) => protocolRegistryEntrySchema.parse(entry));
       return jsonResponse(payload, { headers: corsHeaders });
+    }
+
+    if (pathname === "/polymarket/top-markets") {
+      try {
+        const markets = await fetchTopPredictionMarkets({
+          bypassCache: Boolean(url.searchParams.get("refresh")),
+        });
+        return jsonResponse(markets, { headers: corsHeaders });
+      } catch (error) {
+        console.error("[polymarket]", error);
+        return jsonResponse(
+          { message: "Failed to fetch prediction markets" },
+          { status: 502, headers: corsHeaders },
+        );
+      }
     }
 
     if (pathname.startsWith("/portfolio/")) {

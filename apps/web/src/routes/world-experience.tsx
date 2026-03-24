@@ -1,4 +1,5 @@
 import { usePartyPresence } from "@/features/presence/use-party-presence";
+import { resumeBridge } from "@/features/transactions/bridge";
 import { ConnectPanel } from "@/features/wallet/connect-panel";
 import {
   ensureWalletChain,
@@ -7,7 +8,11 @@ import {
   resolveEnsName,
   usePrivyWallet,
 } from "@/features/wallet/use-privy-wallet";
-import { fetchBridgeJobs, fetchOpenSeaListings, fetchPortfolio } from "@/lib/api/client";
+import {
+  fetchBridgeJobs,
+  fetchOpenSeaListings,
+  fetchPortfolio,
+} from "@/lib/api/client";
 import { runtimeConfig } from "@/lib/config/runtime";
 import { deriveMinions } from "@/lib/minions";
 import { useAppStore } from "@/lib/store/app-store";
@@ -18,17 +23,10 @@ import {
 } from "@chainatlas/shared";
 import { useQuery } from "@tanstack/react-query";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
-import {
-  erc20Abi,
-  formatUnits,
-  getAddress,
-  isAddress,
-} from "viem";
+import { toast } from "sonner";
+import { erc20Abi, formatUnits, getAddress, isAddress } from "viem";
 import { useBalance, useReadContracts } from "wagmi";
-import {
-  NATIVE_CHAIN_IDS,
-  ROOM_BY_CHAIN,
-} from "./world-experience/constants";
+import { NATIVE_CHAIN_IDS, ROOM_BY_CHAIN } from "./world-experience/constants";
 import {
   avatarStorageKey,
   getSupportedErc20Tokens,
@@ -65,6 +63,7 @@ export function WorldExperience() {
   const hydratePortfolio = useAppStore((state) => state.hydratePortfolio);
   const hydrateMinions = useAppStore((state) => state.hydrateMinions);
   const setPendingJobs = useAppStore((state) => state.setPendingJobs);
+  const jobs = useAppStore((state) => state.pendingTransactions.jobs);
   const clearLocalPresence = useAppStore((state) => state.clearLocalPresence);
   const localPresence = useAppStore((state) => state.presence.local);
   const remotePresence = useAppStore((state) => state.presence.remote);
@@ -73,13 +72,18 @@ export function WorldExperience() {
   const currentRoomId = useAppStore((state) => state.session.currentRoomId);
   const setNearbyTarget = useAppStore((state) => state.setNearbyTarget);
   const nearbyTarget = useAppStore((state) => state.overlays.nearbyTarget);
-  const setNearbyMerchantSeller = useAppStore((state) => state.setNearbyMerchantSeller);
-  const nearbyMerchantSeller = useAppStore((state) => state.overlays.nearbyMerchantSeller);
+  const setNearbyMerchantSeller = useAppStore(
+    (state) => state.setNearbyMerchantSeller,
+  );
+  const nearbyMerchantSeller = useAppStore(
+    (state) => state.overlays.nearbyMerchantSeller,
+  );
   const ownMerchantShop = useMemo(
     () => (address ? merchantShops[address.toLowerCase()] : undefined),
     [address, merchantShops],
   );
   const externalSyncKeysRef = useRef<Set<string>>(new Set());
+  const observedBridgeStatusesRef = useRef<Map<string, string>>(new Map());
 
   const ensNameQuery = useQuery({
     enabled: Boolean(address),
@@ -229,6 +233,17 @@ export function WorldExperience() {
         : apiChainAssets,
     [apiChainAssets, shouldUseClientFallback, wagmiAssets, walletChainAssets],
   );
+  const pendingAcrossJobs = useMemo(
+    () =>
+      jobs.filter(
+        (job) =>
+          job.protocol === "across" &&
+          ["submitted", "settling", "quote_ready"].includes(job.status) &&
+          Boolean(job.originChainId) &&
+          Boolean(job.depositId),
+      ),
+    [jobs],
+  );
 
   useQuery({
     enabled: Boolean(address),
@@ -239,6 +254,44 @@ export function WorldExperience() {
       return jobs;
     },
   });
+  useQuery({
+    enabled: Boolean(address) && pendingAcrossJobs.length > 0,
+    queryKey: [
+      "bridge-jobs-status-sync",
+      address,
+      pendingAcrossJobs
+        .map((job) => `${job.id}:${job.status}:${job.updatedAt}`)
+        .join("|"),
+    ],
+    queryFn: async () => {
+      await Promise.allSettled(
+        pendingAcrossJobs.map((job) => resumeBridge(job)),
+      );
+      const refreshedJobs = await fetchBridgeJobs(address!);
+      setPendingJobs(refreshedJobs);
+      return refreshedJobs;
+    },
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: true,
+  });
+
+  useEffect(() => {
+    const nextStatuses = new Map<string, string>();
+    for (const job of jobs) {
+      const previousStatus = observedBridgeStatusesRef.current.get(job.id);
+      if (
+        previousStatus &&
+        previousStatus !== "completed" &&
+        job.status === "completed"
+      ) {
+        toast.success(
+          `Bridge to ${runtimeConfig.chains[job.destinationChain].label} completed`,
+        );
+      }
+      nextStatuses.set(job.id, job.status);
+    }
+    observedBridgeStatusesRef.current = nextStatuses;
+  }, [jobs]);
 
   useEffect(() => {
     setWallet(address);
@@ -383,7 +436,11 @@ export function WorldExperience() {
     let currentDistanceSq = Number.POSITIVE_INFINITY;
     for (const shop of Object.values(merchantShops)) {
       const seller = shop.seller.toLowerCase();
-      if (seller === localAddress || shop.roomId !== currentRoomId || shop.chain !== activeChain) {
+      if (
+        seller === localAddress ||
+        shop.roomId !== currentRoomId ||
+        shop.chain !== activeChain
+      ) {
         continue;
       }
       const sourcePosition =
@@ -530,12 +587,11 @@ export function WorldExperience() {
                 chain: activeChain,
                 roomId: currentRoomId,
                 mode: ownMerchantShop?.mode ?? "clone",
-                anchor:
-                  ownMerchantShop?.anchor ?? {
-                    x: activeChain === "ethereum" ? -58 : 58,
-                    y: 1.2,
-                    z: 0,
-                  },
+                anchor: ownMerchantShop?.anchor ?? {
+                  x: activeChain === "ethereum" ? -58 : 58,
+                  y: 1.2,
+                  z: 0,
+                },
                 updatedAt: Date.now(),
                 listings: result.listings,
               },

@@ -9,6 +9,27 @@ Monorepo for the ChainAtlas MVP:
 
 ## Deploy to Cloudflare
 
+### Quick deploy script (recommended)
+
+From repo root:
+
+```bash
+npm run deploy:cloudflare   # deploy api + party + web
+npm run deploy:api          # deploy only API (Workers)
+npm run deploy:party        # deploy only PartyKit
+npm run deploy:web          # deploy only Web (Pages)
+```
+
+You can also call the script directly:
+
+```bash
+./scripts/deploy-cloudflare.sh all
+./scripts/deploy-cloudflare.sh api
+./scripts/deploy-cloudflare.sh web --skip-checks
+```
+
+The script runs service-specific TypeScript lint checks before deploy (unless `--skip-checks`).
+
 ### 1) Deploy API to Workers
 
 ```bash
@@ -55,3 +76,5 @@ Set Pages build-time environment variables:
 Notes:
 - SPA routing fallback is configured with `apps/web/public/_redirects`.
 - If you use custom domains, update `VITE_API_BASE_URL` and `VITE_PARTYKIT_HOST` to those domains.
+- Deploying only API is safe and common. It will not redeploy PartyKit or Web.
+- API-only deploys can still break Web if you changed response shapes, removed/renamed endpoints, or introduced missing runtime env/secrets.

@@ -1,14 +1,15 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import Fastify from "fastify";
-import cors from "@fastify/cors";
 import {
   chainSlugSchema,
   portfolioAssetSchema,
   protocolRegistryEntrySchema,
 } from "@chainatlas/shared";
+import cors from "@fastify/cors";
+import Fastify from "fastify";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { createApiDataService } from "./data";
+import { fetchTopPredictionMarkets } from "./polymarket";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -25,7 +26,9 @@ for (const envPath of [
 }
 
 const app = Fastify({ logger: true });
-const dataService = createApiDataService(process.env as Record<string, unknown>);
+const dataService = createApiDataService(
+  process.env as Record<string, unknown>,
+);
 
 await app.register(cors, {
   origin: true,
@@ -35,8 +38,8 @@ app.get("/health", async () => ({ ok: true }));
 
 app.get("/portfolio/:address", async (request, reply) => {
   const params = request.params as { address: string };
-  const payload = (await dataService.listPortfolio(params.address)).map((asset) =>
-    portfolioAssetSchema.parse(asset),
+  const payload = (await dataService.listPortfolio(params.address)).map(
+    (asset) => portfolioAssetSchema.parse(asset),
   );
   return reply.send(payload);
 });
@@ -52,7 +55,11 @@ app.get("/nfts/:address", async (request, reply) => {
   const params = request.params as { address: string };
   const query = request.query as { chain?: string; cursor?: string };
   const chain = chainSlugSchema.parse(query.chain);
-  const payload = await dataService.listWalletNfts(params.address, chain, query.cursor);
+  const payload = await dataService.listWalletNfts(
+    params.address,
+    chain,
+    query.cursor,
+  );
   return reply.send(payload);
 });
 
@@ -61,14 +68,21 @@ app.get("/market/opensea/listings/:address", async (request, reply) => {
   const query = request.query as { chain?: string; limit?: string };
   const chain = chainSlugSchema.parse(query.chain);
   const limit = query.limit ? Number.parseInt(query.limit, 10) : 20;
-  const payload = await dataService.listOpenSeaListings(params.address, chain, limit);
+  const payload = await dataService.listOpenSeaListings(
+    params.address,
+    chain,
+    limit,
+  );
   return reply.send(payload);
 });
 
 const openSeaFulfillmentRequestSchema = z.object({
   chain: chainSlugSchema,
   orderHash: z.string().regex(/^0x[a-fA-F0-9]+$/),
-  protocolAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+  protocolAddress: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/)
+    .optional(),
   fulfiller: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
 });
 
@@ -76,6 +90,22 @@ app.post("/market/opensea/fulfillment", async (request, reply) => {
   const body = openSeaFulfillmentRequestSchema.parse(request.body);
   const payload = await dataService.buildOpenSeaFulfillment(body);
   return reply.send(payload);
+});
+
+app.get("/polymarket/top-markets", async (request, reply) => {
+  try {
+    const query = request.query as { refresh?: string };
+    const markets = await fetchTopPredictionMarkets({
+      bypassCache:
+        typeof query.refresh === "string" && query.refresh.length > 0,
+    });
+    return reply.send(markets);
+  } catch (error) {
+    console.error("[polymarket]", error);
+    return reply
+      .status(502)
+      .send({ message: "Failed to fetch prediction markets" });
+  }
 });
 
 const port = Number(process.env.PORT ?? 4000);

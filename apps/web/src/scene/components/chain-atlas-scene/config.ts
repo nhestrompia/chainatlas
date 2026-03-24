@@ -1,6 +1,7 @@
 import {
   WORLD_CONFIG,
   type AvatarId,
+  type ChainSlug,
   type PresenceSnapshot,
   type Vector3Like,
   type WorldRoomId,
@@ -12,6 +13,7 @@ import character2GlbUrl from "../../../../../assets-optimized/character-2.glb?ur
 import character3GlbUrl from "../../../../../assets-optimized/character-3.glb?url";
 import character4GlbUrl from "../../../../../assets-optimized/character-4.glb?url";
 import gateGlbUrl from "../../../../../assets-optimized/gate.glb?url";
+import island2GlbUrl from "../../../../../assets-optimized/island2.glb?url";
 import planeGlbUrl from "../../../../../assets-optimized/plane.glb?url";
 import bridgeGlbUrl from "../../../../../assets-optimized/props-bridge.glb?url";
 import building1GlbUrl from "../../../../../assets-optimized/props-building-1.glb?url";
@@ -21,6 +23,7 @@ import building3GlbUrl from "../../../../../assets-optimized/props-building-3.gl
 export const ROOM_SPAWNS: Record<WorldRoomId, Vector3Like> = {
   "ethereum:main": { x: -58, y: 1.2, z: 0 },
   "base:main": { x: 58, y: 1.2, z: 0 },
+  "polygon:main": { x: 0, y: 1.2, z: 60 },
 };
 
 export type ZoneConfig = (typeof WORLD_CONFIG.interactionZones)[number];
@@ -47,6 +50,38 @@ export type BuildingNode = {
   obstacle: BuildingObstacle;
   interactionZoneId?: string;
   interactionZoneSize?: Pick<Vector3Like, "x" | "z">;
+};
+
+export type BridgeId = "eth-base" | "eth-polygon" | "base-polygon";
+
+export type BridgeDefinition = {
+  id: BridgeId;
+  model: {
+    position: Vec3Tuple;
+    rotationY: number;
+    scale: Vec3Tuple;
+  };
+  gate: {
+    position: Vec3Tuple;
+    rotationY: number;
+    scale: Vec3Tuple;
+  };
+  /** Half-extents for gate blocking in bridge-local coordinates. */
+  blockHalfForward: number;
+  blockHalfPerp: number;
+  /** Half-extents for gate interaction range in bridge-local coordinates. */
+  interactHalfForward: number;
+  interactHalfPerp: number;
+  /** Room on the "negative local-forward" side of the bridge. */
+  negativeRoom: WorldRoomId;
+  /** Room on the "positive local-forward" side of the bridge. */
+  positiveRoom: WorldRoomId;
+  negativeChain: ChainSlug;
+  positiveChain: ChainSlug;
+  roomSwitch: {
+    thresholdForward: number;
+    halfPerp: number;
+  };
 };
 
 export const AVATAR_RADIUS = 0.9;
@@ -83,48 +118,172 @@ export const REMOTE_FLOATING_TEXT_RANGE = 20;
 export const ACTION_FLOATING_TEXT_TTL_MS = 4_000;
 export const GATE_SWITCH_TIMEOUT_MS = 12_000;
 
+// ---------------------------------------------------------------------------
+// Bridge definitions
+// ---------------------------------------------------------------------------
+
+const POLYGON_ISLAND_Z = 96;
+const ETH_TO_POLYGON_X = 58;
+const POLYGON_BRIDGE_CENTER_Z = POLYGON_ISLAND_Z / 2;
+
+// Eth ↔ Base: existing horizontal bridge
+const ETH_BASE_ROTATION_Y = Math.PI / 2;
+
+// Eth ↔ Polygon: diagonal bridge from Ethereum (-58,0) to Polygon (0,72)
+// Direction (58, 72), rotationY = atan2(58, 72)
+const ETH_POLYGON_ROTATION_Y = Math.atan2(ETH_TO_POLYGON_X, POLYGON_ISLAND_Z);
+
+// Base ↔ Polygon: diagonal bridge from Base (58,0) to Polygon (0,72)
+// Direction (-58, 72), rotationY = atan2(-58, 72)
+const BASE_POLYGON_ROTATION_Y = Math.atan2(-ETH_TO_POLYGON_X, POLYGON_ISLAND_Z);
+
+export const BRIDGES: BridgeDefinition[] = [
+  {
+    id: "eth-base",
+    model: {
+      position: [0, -3, 12],
+      rotationY: ETH_BASE_ROTATION_Y,
+      scale: [78, 18, 48],
+    },
+    gate: {
+      position: [0, 0.28, 12],
+      rotationY: ETH_BASE_ROTATION_Y,
+      scale: [10, 10, 10],
+    },
+    blockHalfForward: 0.9,
+    blockHalfPerp: 6.4,
+    interactHalfForward: 9,
+    interactHalfPerp: 7.5,
+    negativeRoom: "ethereum:main",
+    positiveRoom: "base:main",
+    negativeChain: "base",
+    positiveChain: "ethereum",
+    roomSwitch: {
+      thresholdForward: 24,
+      halfPerp: 6,
+    },
+  },
+  {
+    id: "eth-polygon",
+    model: {
+      position: [-29, -3, POLYGON_BRIDGE_CENTER_Z],
+      rotationY: ETH_POLYGON_ROTATION_Y,
+      scale: [96, 16, 44],
+    },
+    gate: {
+      position: [-29, 0.28, POLYGON_BRIDGE_CENTER_Z],
+      rotationY: ETH_POLYGON_ROTATION_Y,
+      scale: [10, 10, 10],
+    },
+    blockHalfForward: 0.9,
+    blockHalfPerp: 6.4,
+    interactHalfForward: 9,
+    interactHalfPerp: 7.5,
+    negativeRoom: "ethereum:main",
+    positiveRoom: "polygon:main",
+    negativeChain: "polygon",
+    positiveChain: "ethereum",
+    roomSwitch: {
+      thresholdForward: 24,
+      halfPerp: 6,
+    },
+  },
+  {
+    id: "base-polygon",
+    model: {
+      position: [29, -3, POLYGON_BRIDGE_CENTER_Z],
+      rotationY: BASE_POLYGON_ROTATION_Y,
+      scale: [96, 16, 44],
+    },
+    gate: {
+      position: [29, 0.28, POLYGON_BRIDGE_CENTER_Z],
+      rotationY: BASE_POLYGON_ROTATION_Y,
+      scale: [10, 10, 10],
+    },
+    blockHalfForward: 0.9,
+    blockHalfPerp: 6.4,
+    interactHalfForward: 9,
+    interactHalfPerp: 7.5,
+    negativeRoom: "base:main",
+    positiveRoom: "polygon:main",
+    negativeChain: "polygon",
+    positiveChain: "base",
+    roomSwitch: {
+      thresholdForward: 24,
+      halfPerp: 6,
+    },
+  },
+];
+
+export const BRIDGES_BY_ID: Record<BridgeId, BridgeDefinition> =
+  Object.fromEntries(BRIDGES.map((b) => [b.id, b])) as Record<
+    BridgeId,
+    BridgeDefinition
+  >;
+
+/**
+ * Convert world XZ position to bridge-local coordinates.
+ * localForward = distance along the bridge axis (positive toward positiveRoom side).
+ * localPerp = perpendicular distance (positive to the right when facing forward).
+ */
+export function toBridgeLocal(
+  bridge: BridgeDefinition,
+  worldX: number,
+  worldZ: number,
+) {
+  const sin = Math.sin(bridge.gate.rotationY);
+  const cos = Math.cos(bridge.gate.rotationY);
+  const relX = worldX - bridge.gate.position[0];
+  const relZ = worldZ - bridge.gate.position[2];
+  return {
+    forward: relX * sin + relZ * cos,
+    perp: relX * cos - relZ * sin,
+  };
+}
+
+// Keep legacy aliases for code that still references them
 export const BRIDGE_CONFIG = {
-  position: [0, -3, 12] as Vec3Tuple,
-  rotationY: Math.PI / 2,
-  scale: [78, 18, 48] as Vec3Tuple,
-  walkway: {
-    x: 0,
-    z: 12,
-    hx: 44,
-    hz: 7,
-  },
-  roomSwitch: {
-    xThresholdOffset: 24,
-    zHalfSpan: 6,
-  },
+  position: BRIDGES[0].model.position,
+  rotationY: BRIDGES[0].model.rotationY,
+  scale: BRIDGES[0].model.scale,
+  walkway: { x: 0, z: 12, hx: 44, hz: 7 },
+  roomSwitch: { xThresholdOffset: 24, zHalfSpan: 6 },
   interactionZones: {
-    "bridge-gate-eth": {
-      xOffset: -10,
-      zOffset: 0,
-      size: { x: 18, z: 10 },
-    },
-    "bridge-gate-base": {
-      xOffset: 10,
-      zOffset: 0,
-      size: { x: 18, z: 10 },
-    },
+    "bridge-gate-eth": { xOffset: -10, zOffset: 0, size: { x: 18, z: 10 } },
+    "bridge-gate-base": { xOffset: 10, zOffset: 0, size: { x: 18, z: 10 } },
   },
 } as const;
 
 export const BRIDGE_GATE_CONFIG = {
-  position: [0, 0.28, 12] as Vec3Tuple,
-  rotationY: Math.PI / 2,
-  scale: [10, 10, 10] as Vec3Tuple,
+  position: BRIDGES[0].gate.position,
+  rotationY: BRIDGES[0].gate.rotationY,
+  scale: BRIDGES[0].gate.scale,
   blockHalfX: 0.9,
   blockHalfZ: 6.4,
   interactHalfX: 9,
   interactHalfZ: 7.5,
 } as const;
 
+// ---------------------------------------------------------------------------
+// Islands
+// ---------------------------------------------------------------------------
+
 const ISLAND_SCALE = 0.45;
-const ISLAND_NODES: Array<{ label: string; position: Vec3Tuple }> = [
+const ISLAND_NODES: Array<{
+  label: string;
+  position: Vec3Tuple;
+  modelUrl?: string;
+  scale?: number;
+  rotationY?: number;
+}> = [
   { label: "Ethereum Island", position: [-58, -2.2, 0] },
   { label: "Base Island", position: [58, -2.2, 0] },
+  {
+    label: "Polygon Island",
+    position: [0, -2.2, POLYGON_ISLAND_Z],
+
+    rotationY: Math.PI,
+  },
 ];
 
 function degreesToRadians(value: number) {
@@ -287,7 +446,21 @@ export const SCENE_INTERACTION_ZONES: ZoneConfig[] =
 export const WALKABLE_CIRCLES: CircleArea[] = [
   { x: -58, z: 0, r: 43 },
   { x: 58, z: 0, r: 43 },
+  { x: 0, z: POLYGON_ISLAND_Z, r: 43 },
 ];
+
+export const PREDICTION_PLAZA = {
+  gateRotationY: Math.PI,
+  gatePositions: [
+    [-14, 1.35, POLYGON_ISLAND_Z - 13] as Vec3Tuple,
+    [0, 1.35, POLYGON_ISLAND_Z - 13] as Vec3Tuple,
+    [14, 1.35, POLYGON_ISLAND_Z - 13] as Vec3Tuple,
+  ],
+  gateWidth: 3.5,
+  gateHeight: 5.5,
+  gateDepth: 1.2,
+  gateSpacing: 2.5,
+} as const;
 
 export const WALKABLE_RECTS: RectArea[] = [
   {
@@ -321,6 +494,7 @@ export const CHARACTER_MODEL_BY_ID: Record<AvatarId, string> = {
 
 [
   planeGlbUrl,
+  island2GlbUrl,
   bridgeGlbUrl,
   gateGlbUrl,
   building1GlbUrl,

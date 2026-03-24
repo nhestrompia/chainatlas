@@ -1,4 +1,3 @@
-import { create } from "zustand";
 import {
   WORLD_CONFIG,
   type BridgeJob,
@@ -6,11 +5,13 @@ import {
   type MerchantShop,
   type OverlaySlice,
   type PortfolioAsset,
+  type PredictionMarket,
   type PresenceSnapshot,
   type SessionSlice,
   type TokenMinion,
   type WorldRoomId,
 } from "@chainatlas/shared";
+import { create } from "zustand";
 
 type AppState = {
   session: SessionSlice;
@@ -33,13 +34,20 @@ type AppState = {
     shops: Record<string, MerchantShop>;
   };
   overlays: OverlaySlice;
+  predictionMarkets: {
+    markets: PredictionMarket[];
+    loading: boolean;
+  };
   pendingTransactions: {
     jobs: BridgeJob[];
   };
   partySocket?: WebSocket;
   setWallet(address?: string): void;
   setRoom(roomId: WorldRoomId): void;
-  setOverlay(activeOverlay?: OverlaySlice["activeOverlay"], nearbyTarget?: string): void;
+  setOverlay(
+    activeOverlay?: OverlaySlice["activeOverlay"],
+    nearbyTarget?: string,
+  ): void;
   setSwapSelection(assetKey?: string): void;
   setSwapStep(step: OverlaySlice["swapStep"]): void;
   setSendSelection(assetKey?: string): void;
@@ -64,15 +72,22 @@ type AppState = {
   removeMerchantListing(seller: string, listingId: string): void;
   clearMerchants(): void;
   hydratePortfolio(assets: PortfolioAsset[]): void;
-  hydrateMinions(minions: TokenMinion[], total: number, visibleSymbols: string[]): void;
+  hydrateMinions(
+    minions: TokenMinion[],
+    total: number,
+    visibleSymbols: string[],
+  ): void;
   setPendingJobs(jobs: BridgeJob[]): void;
   setInteractionStatus(status: InteractionStatus): void;
   setPartySocket(socket?: WebSocket): void;
+  hydratePredictionMarkets(markets: PredictionMarket[]): void;
+  setPredictionSelectedMarket(index?: number, side?: "yes" | "no"): void;
 };
 
 const roomToChain: Record<WorldRoomId, SessionSlice["activeChain"]> = {
   "ethereum:main": "ethereum",
   "base:main": "base",
+  "polygon:main": "polygon",
 };
 
 export const useAppStore = create<AppState>((set) => ({
@@ -98,6 +113,10 @@ export const useAppStore = create<AppState>((set) => ({
     shops: {},
   },
   overlays: {},
+  predictionMarkets: {
+    markets: [],
+    loading: false,
+  },
   pendingTransactions: {
     jobs: [],
   },
@@ -127,39 +146,51 @@ export const useAppStore = create<AppState>((set) => ({
         nearbyTarget:
           activeOverlay === "merchant"
             ? state.overlays.nearbyTarget
-            : nearbyTarget ?? state.overlays.nearbyTarget,
+            : (nearbyTarget ?? state.overlays.nearbyTarget),
         nearbyMerchantSeller:
           activeOverlay === "merchant"
-            ? nearbyTarget ?? state.overlays.nearbyMerchantSeller
+            ? (nearbyTarget ?? state.overlays.nearbyMerchantSeller)
             : undefined,
         merchantTab:
           activeOverlay === "merchant"
             ? state.overlays.activeOverlay === "merchant"
-              ? state.overlays.merchantTab ?? "browse"
+              ? (state.overlays.merchantTab ?? "browse")
               : "browse"
             : undefined,
         merchantMode:
           activeOverlay === "merchant"
-            ? state.overlays.merchantMode ?? "clone"
+            ? (state.overlays.merchantMode ?? "clone")
             : undefined,
         merchantSelectedListingId:
           activeOverlay === "merchant"
             ? state.overlays.merchantSelectedListingId
             : undefined,
+        predictionSelectedMarketIndex:
+          activeOverlay === "prediction"
+            ? state.overlays.predictionSelectedMarketIndex
+            : undefined,
+        predictionSelectedSide:
+          activeOverlay === "prediction"
+            ? state.overlays.predictionSelectedSide
+            : undefined,
         swapSelectedAssetKey:
-          activeOverlay === "swap" ? state.overlays.swapSelectedAssetKey : undefined,
+          activeOverlay === "swap"
+            ? state.overlays.swapSelectedAssetKey
+            : undefined,
         swapStep:
           activeOverlay === "swap"
             ? state.overlays.activeOverlay === "swap"
-              ? state.overlays.swapStep ?? "select"
+              ? (state.overlays.swapStep ?? "select")
               : "select"
             : undefined,
         sendSelectedAssetKey:
-          activeOverlay === "send" ? state.overlays.sendSelectedAssetKey : undefined,
+          activeOverlay === "send"
+            ? state.overlays.sendSelectedAssetKey
+            : undefined,
         sendStep:
           activeOverlay === "send"
             ? state.overlays.activeOverlay === "send"
-              ? state.overlays.sendStep ?? "select"
+              ? (state.overlays.sendStep ?? "select")
               : "select"
             : undefined,
         bridgeSelectedAssetKey:
@@ -169,7 +200,7 @@ export const useAppStore = create<AppState>((set) => ({
         bridgeStep:
           activeOverlay === "bridge"
             ? state.overlays.activeOverlay === "bridge"
-              ? state.overlays.bridgeStep ?? "select"
+              ? (state.overlays.bridgeStep ?? "select")
               : "select"
             : undefined,
       },
@@ -282,10 +313,13 @@ export const useAppStore = create<AppState>((set) => ({
     }));
   },
   hydrateMerchants(shops) {
-    const next = shops.reduce<Record<string, MerchantShop>>((accumulator, shop) => {
-      accumulator[shop.seller.toLowerCase()] = shop;
-      return accumulator;
-    }, {});
+    const next = shops.reduce<Record<string, MerchantShop>>(
+      (accumulator, shop) => {
+        accumulator[shop.seller.toLowerCase()] = shop;
+        return accumulator;
+      },
+      {},
+    );
     set({
       merchants: {
         shops: next,
@@ -318,7 +352,9 @@ export const useAppStore = create<AppState>((set) => ({
           },
         };
       }
-      const nextListings = current.listings.filter((listing) => listing.listingId !== listingId);
+      const nextListings = current.listings.filter(
+        (listing) => listing.listingId !== listingId,
+      );
       if (nextListings.length === 0) {
         const nextShops = { ...state.merchants.shops };
         delete nextShops[key];
@@ -376,7 +412,11 @@ export const useAppStore = create<AppState>((set) => ({
         return state;
       }
       const normalizedText = typeof text === "string" ? text.trim() : "";
-      if (!normalizedText || typeof expiresAt !== "number" || expiresAt <= Date.now()) {
+      if (
+        !normalizedText ||
+        typeof expiresAt !== "number" ||
+        expiresAt <= Date.now()
+      ) {
         return {
           presence: {
             ...state.presence,
@@ -503,5 +543,23 @@ export const useAppStore = create<AppState>((set) => ({
   },
   setPartySocket(socket) {
     set({ partySocket: socket });
+  },
+  hydratePredictionMarkets(markets) {
+    set({
+      predictionMarkets: {
+        markets,
+        loading: false,
+      },
+    });
+  },
+  setPredictionSelectedMarket(index, side) {
+    set((state) => ({
+      overlays: {
+        ...state.overlays,
+        predictionSelectedMarketIndex: index,
+        predictionSelectedSide:
+          side ?? (typeof index === "number" ? "yes" : undefined),
+      },
+    }));
   },
 }));

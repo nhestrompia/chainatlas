@@ -79,6 +79,11 @@ const LazyMerchantPanel = lazy(() =>
     default: module.MerchantPanel,
   })),
 );
+const LazyPredictionPanel = lazy(() =>
+  import("@/features/overlays/action-panels").then((module) => ({
+    default: module.PredictionPanel,
+  })),
+);
 
 export function WorldHud() {
   const { address, authenticated, disconnect } = usePrivyWallet();
@@ -152,12 +157,49 @@ export function WorldHud() {
     if (overlays.activeOverlay === "chat") return <LazyChatPanel />;
     if (overlays.activeOverlay === "player") return <LazyPlayerPanel />;
     if (overlays.activeOverlay === "merchant") return <LazyMerchantPanel />;
+    if (overlays.activeOverlay === "prediction") return <LazyPredictionPanel />;
     return null;
-  }, [overlays.activeOverlay, overlays.bridgeStep, overlays.sendStep, overlays.swapStep]);
+  }, [
+    overlays.activeOverlay,
+    overlays.bridgeStep,
+    overlays.sendStep,
+    overlays.swapStep,
+  ]);
   const immersiveActionPanel =
     overlays.activeOverlay === "swap" ||
     overlays.activeOverlay === "send" ||
-    overlays.activeOverlay === "bridge";
+    overlays.activeOverlay === "bridge" ||
+    overlays.activeOverlay === "prediction";
+  const panelWidthClass = useMemo(() => {
+    if (!immersiveActionPanel) {
+      return "max-w-[540px]";
+    }
+    if (overlays.activeOverlay === "swap") {
+      return overlays.swapStep === "details"
+        ? "max-w-[440px]"
+        : "max-w-[500px]";
+    }
+    if (overlays.activeOverlay === "send") {
+      return overlays.sendStep === "details"
+        ? "max-w-[440px]"
+        : "max-w-[500px]";
+    }
+    if (overlays.activeOverlay === "bridge") {
+      return overlays.bridgeStep === "details"
+        ? "max-w-[440px]"
+        : "max-w-[500px]";
+    }
+    if (overlays.activeOverlay === "prediction") {
+      return "max-w-[460px]";
+    }
+    return "max-w-[540px]";
+  }, [
+    immersiveActionPanel,
+    overlays.activeOverlay,
+    overlays.bridgeStep,
+    overlays.sendStep,
+    overlays.swapStep,
+  ]);
   const [shoutDraft, setShoutDraft] = useState("");
   const [shoutCooldownUntil, setShoutCooldownUntil] = useState(0);
   const [cooldownTick, setCooldownTick] = useState(0);
@@ -215,7 +257,11 @@ export function WorldHud() {
             <div className="rounded-full border border-cyan-100/20 bg-[#08151d]/85 px-3 py-1.5 text-sm text-cyan-50 shadow-xl backdrop-blur-xl">
               <span className="text-cyan-100/60">Island </span>
               <span className="font-semibold">
-                {session.activeChain === "ethereum" ? "Ethereum" : "Base"}
+                {session.activeChain === "ethereum"
+                  ? "Ethereum"
+                  : session.activeChain === "polygon"
+                    ? "Polygon"
+                    : "Base"}
               </span>
             </div>
             <div className="pointer-events-auto flex flex-wrap items-center gap-2 text-xs sm:text-sm">
@@ -252,7 +298,8 @@ export function WorldHud() {
                   className={cn(
                     "rounded-full border px-3 py-1.5 text-amber-50 shadow-xl backdrop-blur-xl transition-colors",
                     overlays.activeOverlay === "merchant" &&
-                      overlays.nearbyMerchantSeller?.toLowerCase() === address.toLowerCase()
+                      overlays.nearbyMerchantSeller?.toLowerCase() ===
+                        address.toLowerCase()
                       ? "border-amber-200/65 bg-amber-300/25"
                       : "border-amber-200/40 bg-[#2b1e12]/88 hover:border-amber-200/60 hover:bg-[#3a2818]",
                   )}
@@ -405,15 +452,9 @@ export function WorldHud() {
           <div
             className={cn(
               "pointer-events-auto relative w-full",
-              immersiveActionPanel
-                ? overlays.activeOverlay === "swap"
-                  ? overlays.swapStep === "details"
-                    ? "max-w-[440px]"
-                    : "max-w-[500px]"
-                  : overlays.sendStep === "details"
-                    ? "max-w-[440px]"
-                    : "max-w-[500px]"
-                : "max-w-[540px]",
+              panelWidthClass,
+              overlays.activeOverlay === "prediction" &&
+                "prediction-panel-enter",
             )}
             onClick={(event) => event.stopPropagation()}
           >

@@ -1,4 +1,4 @@
-export type ChainSlug = "ethereum" | "base";
+export type ChainSlug = "ethereum" | "base" | "polygon";
 export type RuntimeProfile = "testnet" | "mainnet";
 
 export type ZoneKind =
@@ -7,9 +7,10 @@ export type ZoneKind =
   | "bridge"
   | "send"
   | "district"
-  | "portal";
+  | "portal"
+  | "prediction";
 
-export type WorldRoomId = "ethereum:main" | "base:main";
+export type WorldRoomId = "ethereum:main" | "base:main" | "polygon:main";
 
 export type TransactionKind = "send-native" | "send-erc20" | "swap" | "bridge";
 export type AvatarId = "navigator" | "warden" | "sprinter" | "mystic";
@@ -250,7 +251,7 @@ export interface BridgeRuntimeConfig {
   protocol: "across";
   apiBaseUrl: string;
   integratorIdEnvKey: string;
-  spokePoolAddresses: Record<ChainSlug, string>;
+  spokePoolAddresses: Partial<Record<ChainSlug, string>>;
   supportedAssets: ProtocolTokenSupport[];
 }
 
@@ -305,7 +306,8 @@ export interface OverlaySlice {
     | "jobs"
     | "chat"
     | "player"
-    | "merchant";
+    | "merchant"
+    | "prediction";
   nearbyTarget?: string;
   nearbyMerchantSeller?: string;
   merchantTab?: "browse" | "my-listings" | "import" | "create";
@@ -317,6 +319,8 @@ export interface OverlaySlice {
   sendStep?: "select" | "details";
   bridgeSelectedAssetKey?: string;
   bridgeStep?: "select" | "details";
+  predictionSelectedMarketIndex?: number;
+  predictionSelectedSide?: "yes" | "no";
 }
 
 export interface PendingTransactionsSlice {
@@ -327,4 +331,19 @@ export interface PendingTransactionsSlice {
 export interface PartyConnectionSlice {
   host: string;
   roomId: WorldRoomId;
+}
+
+export interface PredictionMarket {
+  id: string;
+  question: string;
+  yesPrice: number;
+  noPrice: number;
+  volume: number;
+  slug: string;
+  conditionId?: string;
+  yesTokenId?: string;
+  noTokenId?: string;
+  tickSize?: string;
+  negRisk?: boolean;
+  updatedAt: number;
 }

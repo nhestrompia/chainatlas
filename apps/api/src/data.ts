@@ -1,5 +1,5 @@
 import { createPublicClient, erc20Abi, formatUnits, getAddress, http } from "viem";
-import { base, baseSepolia, mainnet, sepolia } from "viem/chains";
+import { base, baseSepolia, mainnet, polygon, polygonAmoy, sepolia } from "viem/chains";
 import {
   getRuntimeProtocolConfig,
   resolveRuntimeProfile,
@@ -90,6 +90,14 @@ const nativeAssetMeta: Record<ChainSlug, Omit<PortfolioAsset, "balance" | "usdVa
     decimals: 18,
     verified: true,
   },
+  polygon: {
+    chain: "polygon",
+    address: "native",
+    symbol: "MATIC",
+    name: "MATIC",
+    decimals: 18,
+    verified: true,
+  },
 };
 
 function getEnvString(env: ApiDataEnv, key: string) {
@@ -116,6 +124,9 @@ function optionalAddressEnv(env: ApiDataEnv, ...keys: string[]) {
 function resolveChain(slug: ChainSlug, profile: RuntimeProfile) {
   if (slug === "ethereum") {
     return profile === "testnet" ? sepolia : mainnet;
+  }
+  if (slug === "polygon") {
+    return profile === "testnet" ? polygonAmoy : polygon;
   }
 
   return profile === "testnet" ? baseSepolia : base;
@@ -149,10 +160,17 @@ function createRuntimeAddressOverrides(env: ApiDataEnv): RuntimeAddressOverrides
       "VITE_ACROSS_SPOKE_POOL_ETHEREUM",
     ),
     acrossSpokePoolBase: optionalAddressEnv(env, "ACROSS_SPOKE_POOL_BASE", "VITE_ACROSS_SPOKE_POOL_BASE"),
+    acrossSpokePoolPolygon: optionalAddressEnv(
+      env,
+      "ACROSS_SPOKE_POOL_POLYGON",
+      "VITE_ACROSS_SPOKE_POOL_POLYGON",
+    ),
     wrappedNativeEthereum: optionalAddressEnv(env, "WRAPPED_NATIVE_ETHEREUM", "VITE_WRAPPED_NATIVE_ETHEREUM"),
     wrappedNativeBase: optionalAddressEnv(env, "WRAPPED_NATIVE_BASE", "VITE_WRAPPED_NATIVE_BASE"),
+    wrappedNativePolygon: optionalAddressEnv(env, "WRAPPED_NATIVE_POLYGON", "VITE_WRAPPED_NATIVE_POLYGON"),
     usdcEthereum: optionalAddressEnv(env, "USDC_ETHEREUM", "VITE_USDC_ETHEREUM"),
     usdcBase: optionalAddressEnv(env, "USDC_BASE", "VITE_USDC_BASE"),
+    usdcPolygon: optionalAddressEnv(env, "USDC_POLYGON", "VITE_USDC_POLYGON"),
     usdtEthereum: optionalAddressEnv(env, "USDT_ETHEREUM", "VITE_USDT_ETHEREUM"),
     usdtBase: optionalAddressEnv(env, "USDT_BASE", "VITE_USDT_BASE"),
   };
@@ -172,6 +190,10 @@ function createPublicClients(env: ApiDataEnv) {
         chain: resolveChain("base", "testnet"),
         transport: http(resolveRpcUrl(env, "base", "testnet") ?? resolveChain("base", "testnet").rpcUrls.default.http[0]),
       }),
+      polygon: createPublicClient({
+        chain: resolveChain("polygon", "testnet"),
+        transport: http(resolveChain("polygon", "testnet").rpcUrls.default.http[0]),
+      }),
     },
     mainnet: {
       ethereum: createPublicClient({
@@ -184,6 +206,10 @@ function createPublicClients(env: ApiDataEnv) {
       base: createPublicClient({
         chain: resolveChain("base", "mainnet"),
         transport: http(resolveRpcUrl(env, "base", "mainnet") ?? resolveChain("base", "mainnet").rpcUrls.default.http[0]),
+      }),
+      polygon: createPublicClient({
+        chain: resolveChain("polygon", "mainnet"),
+        transport: http(resolveChain("polygon", "mainnet").rpcUrls.default.http[0]),
       }),
     },
   } as const;

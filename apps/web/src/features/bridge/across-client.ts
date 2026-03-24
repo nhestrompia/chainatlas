@@ -1,7 +1,16 @@
 import { createAcrossClient } from "@across-protocol/app-sdk";
 import type { ChainSlug } from "@chainatlas/shared";
-import { concat, encodeFunctionData, isAddress, isHex, padHex, parseAbi, parseUnits } from "viem";
-import { base, baseSepolia, mainnet, sepolia } from "viem/chains";
+import {
+  concat,
+  encodeFunctionData,
+  formatEther,
+  isAddress,
+  isHex,
+  padHex,
+  parseAbi,
+  parseUnits,
+} from "viem";
+import { base, baseSepolia, mainnet, polygon, polygonAmoy, sepolia } from "viem/chains";
 import {
   createChainPublicClient,
   createPrivyWalletClient,
@@ -36,6 +45,14 @@ type BridgeQuoteInput = {
   recipient: `0x${string}`;
 };
 
+type ManualAcrossDepositInput = {
+  accountAddress: `0x${string}`;
+  client: ReturnType<typeof getAcrossClient>;
+  deposit: Awaited<ReturnType<typeof quoteAcrossBridge>>["deposit"];
+  sourcePublicClient: ReturnType<typeof createChainPublicClient>;
+  wallet: ConnectedPrivyWallet;
+};
+
 const DEPOSIT_ABI = parseAbi([
   "function deposit(bytes32 depositor, bytes32 recipient, bytes32 inputToken, bytes32 outputToken, uint256 inputAmount, uint256 outputAmount, uint256 destinationChainId, bytes32 exclusiveRelayer, uint32 quoteTimestamp, uint32 fillDeadline, uint32 exclusivityParameter, bytes message) payable",
 ]);
@@ -43,27 +60,8 @@ const APPROVE_ABI = parseAbi([
   "function approve(address spender, uint256 value) returns (bool)",
   "function allowance(address owner, address spender) view returns (uint256)",
 ]);
+const MAX_UINT256 = (1n << 256n) - 1n;
 const DOMAIN_CALLDATA_DELIMITER = "0x1dc0de";
-
-function addressToBytes32(address: `0x${string}`) {
-  if (!isHex(address)) {
-    throw new Error("Invalid hex input");
-  }
-  if (address.length === 66) {
-    return address;
-  }
-  if (!isAddress(address)) {
-    throw new Error("Invalid address");
-  }
-  return padHex(address, { dir: "left", size: 32 });
-}
-
-function getIntegratorDataSuffix(integratorId: string) {
-  if (!isHex(integratorId) || integratorId.length !== 6) {
-    return undefined;
-  }
-  return concat([DOMAIN_CALLDATA_DELIMITER, integratorId as `0x${string}`]);
-}
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -107,59 +105,290 @@ function normalizeRpcFailureMessage(message: string, sourceChain: ChainSlug) {
   }
 
   const rpcUrl = extractRpcUrl(message);
-  const envKey = sourceChain === "ethereum" ? "VITE_ETHEREUM_RPC_URL" : "VITE_BASE_RPC_URL";
+  const envKey =
+    sourceChain === "ethereum"
+      ? "VITE_ETHEREUM_RPC_URL"
+      : sourceChain === "base"
+        ? "VITE_BASE_RPC_URL"
+        : runtimeProfile === "testnet"
+          ? "VITE_POLYGON_AMOY_RPC_URL"
+          : "VITE_POLYGON_RPC_URL";
   const endpoint = rpcUrl ? `RPC endpoint ${rpcUrl} is not reachable.` : "RPC endpoint is not reachable.";
 
   return `${endpoint} Set ${envKey} to a reliable ${sourceChain} endpoint and retry bridge.`;
+}
+
+function normalizeGasAllowanceErrorMessage(message: string, sourceChain: ChainSlug) {
+  const lowered = message.toLowerCase();
+  if (
+    lowered.includes("gas required exceeds allowance") ||
+    lowered.includes("insufficient funds") ||
+    lowered.includes("intrinsic gas too low")
+  ) {
+    return `Bridge transaction could not estimate gas on ${sourceChain}. Ensure wallet has enough native gas token and retry.`;
+  }
+  return undefined;
+}
+
+function isRpcMethodUnavailable(message: string) {
+  const lowered = message.toLowerCase();
+  const mentionsUnsupportedMethod =
+    lowered.includes("eth_filltransaction") ||
+    lowered.includes("eth_maxpriorityfeepergas");
+  const unsupportedSignal =
+    lowered.includes("does not exist") ||
+    lowered.includes("not available") ||
+    lowered.includes("method not found");
+  return mentionsUnsupportedMethod && unsupportedSignal;
+}
+
+function formatNativeBalanceHint(
+  amount: bigint,
+  symbol: string,
+) {
+  const formatted = Number(formatEther(amount));
+  if (Number.isFinite(formatted)) {
+    return `${formatted.toFixed(6)} ${symbol}`;
+  }
+  return `${formatEther(amount)} ${symbol}`;
+}
+
+function addressToBytes32(address: `0x${string}`) {
+  if (!isHex(address)) {
+    throw new Error("Invalid hex input");
+  }
+  if (address.length === 66) {
+    return address;
+  }
+  if (!isAddress(address)) {
+    throw new Error("Invalid address");
+  }
+  return padHex(address, { dir: "left", size: 32 });
+}
+
+function getIntegratorDataSuffix(integratorId: string) {
+  if (!isHex(integratorId) || integratorId.length !== 6) {
+    return undefined;
+  }
+  return concat([DOMAIN_CALLDATA_DELIMITER, integratorId as `0x${string}`]);
 }
 
 function bigintToHex(value: bigint) {
   return `0x${value.toString(16)}`;
 }
 
+function getErrorMessageSafe(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
+async function estimateGasWithFallback(
+  estimateFn: () => Promise<bigint>,
+  fallbackGas: bigint,
+) {
+  try {
+    return await estimateFn();
+  } catch {
+    return fallbackGas;
+  }
+}
+
 async function sendTransactionViaProvider(input: {
   wallet: ConnectedPrivyWallet;
+  from: `0x${string}`;
   to: `0x${string}`;
   data: `0x${string}`;
   value?: bigint;
+  gas?: bigint;
 }): Promise<`0x${string}`> {
   const provider = await input.wallet.getEthereumProvider();
-  const hash = await provider.request({
-    method: "eth_sendTransaction",
-    params: [
-      {
-        from: input.wallet.address,
-        to: input.to,
-        data: input.data,
-        ...(typeof input.value === "bigint" && input.value > 0n
-          ? { value: bigintToHex(input.value) }
-          : {}),
-      },
-    ],
-  });
+  const tx = {
+    from: input.from,
+    to: input.to,
+    data: input.data,
+    value: bigintToHex(input.value ?? 0n),
+    ...(typeof input.gas === "bigint" ? { gas: bigintToHex(input.gas) } : {}),
+  };
 
-  if (typeof hash !== "string" || !hash.startsWith("0x")) {
-    throw new Error("Wallet provider did not return a transaction hash");
+  try {
+    const hash = await provider.request({
+      method: "eth_sendTransaction",
+      params: [tx],
+    });
+    if (typeof hash !== "string" || !hash.startsWith("0x")) {
+      throw new Error("Wallet provider did not return a transaction hash");
+    }
+    return hash as `0x${string}`;
+  } catch (error) {
+    const lowered = getErrorMessageSafe(error).toLowerCase();
+    if (
+      lowered.includes("not enough input to decode") ||
+      lowered.includes("invalid parameters")
+    ) {
+      throw new Error(
+        "Wallet rejected transaction payload. Disable Smart Transactions in MetaMask and retry bridge once.",
+      );
+    }
+    throw error;
+  }
+}
+
+function shouldUseManualWalletFallback(message: string) {
+  const lowered = message.toLowerCase();
+  return (
+    isRpcMethodUnavailable(message) ||
+    lowered.includes("insufficient eth for gas") ||
+    lowered.includes("gas required exceeds allowance") ||
+    lowered.includes("insufficient funds") ||
+    lowered.includes("intrinsic gas too low")
+  );
+}
+
+function isMethodUnsupportedError(error: unknown, methodName: string) {
+  const message = getErrorMessageSafe(error).toLowerCase();
+  return (
+    message.includes(methodName.toLowerCase()) &&
+    (message.includes("does not exist") ||
+      message.includes("not available") ||
+      message.includes("method not found") ||
+      message.includes("not supported"))
+  );
+}
+
+async function executeAcrossDepositManually(
+  input: ManualAcrossDepositInput,
+  onProgress?: (progress: AcrossProgress) => void,
+) {
+  let depositId: string | undefined;
+  let originTxHash: `0x${string}` | undefined;
+  const { accountAddress, deposit, sourcePublicClient, wallet } = input;
+
+  if (!deposit.isNative) {
+    const allowance = await sourcePublicClient.readContract({
+      address: deposit.inputToken,
+      abi: APPROVE_ABI,
+      functionName: "allowance",
+      args: [accountAddress, deposit.spokePoolAddress],
+    });
+    if (allowance < deposit.inputAmount) {
+      const approveGas = await estimateGasWithFallback(
+        async () =>
+          await sourcePublicClient.estimateGas({
+            account: accountAddress,
+            to: deposit.inputToken,
+            data: encodeFunctionData({
+              abi: APPROVE_ABI,
+              functionName: "approve",
+              args: [deposit.spokePoolAddress, MAX_UINT256],
+            }),
+            value: 0n,
+          }),
+        150_000n,
+      );
+      const approveData = encodeFunctionData({
+        abi: APPROVE_ABI,
+        functionName: "approve",
+        args: [deposit.spokePoolAddress, MAX_UINT256],
+      });
+      onProgress?.({ step: "approve", status: "txPending" });
+      const approveHash = await sendTransactionViaProvider({
+        wallet,
+        from: accountAddress,
+        to: deposit.inputToken,
+        data: approveData,
+        gas: approveGas,
+      });
+      await sourcePublicClient.waitForTransactionReceipt({ hash: approveHash });
+      onProgress?.({
+        step: "approve",
+        status: "txSuccess",
+        txReceipt: { transactionHash: approveHash },
+      });
+    }
   }
 
-  return hash as `0x${string}`;
+  const depositData = encodeFunctionData({
+    abi: DEPOSIT_ABI,
+    functionName: "deposit",
+    args: [
+      addressToBytes32(accountAddress),
+      addressToBytes32(deposit.recipient),
+      addressToBytes32(deposit.inputToken),
+      addressToBytes32(deposit.outputToken),
+      deposit.inputAmount,
+      deposit.outputAmount,
+      BigInt(deposit.destinationChainId),
+      addressToBytes32(deposit.exclusiveRelayer),
+      deposit.quoteTimestamp,
+      deposit.fillDeadline,
+      deposit.exclusivityDeadline,
+      deposit.message,
+    ],
+  });
+  const dataSuffix = getIntegratorDataSuffix(env.acrossIntegratorId);
+  const bridgedData = dataSuffix ? concat([depositData, dataSuffix]) : depositData;
+  const depositGas = await estimateGasWithFallback(
+    async () =>
+      await sourcePublicClient.estimateGas({
+        account: accountAddress,
+        to: deposit.spokePoolAddress,
+        data: bridgedData,
+        value: deposit.isNative ? deposit.inputAmount : 0n,
+      }),
+    900_000n,
+  );
+
+  onProgress?.({ step: "deposit", status: "txPending" });
+  originTxHash = await sendTransactionViaProvider({
+    wallet,
+    from: accountAddress,
+    to: deposit.spokePoolAddress,
+    data: bridgedData,
+    value: deposit.isNative ? deposit.inputAmount : 0n,
+    gas: depositGas,
+  });
+
+  const depositStatus = await (input.client as any).waitForDepositTx({
+    originChainId: deposit.originChainId,
+    transactionHash: originTxHash,
+    publicClient: sourcePublicClient,
+  });
+  if (depositStatus?.depositId !== undefined) {
+    depositId = String(depositStatus.depositId);
+  }
+  onProgress?.({
+    step: "deposit",
+    status: "txSuccess",
+    depositId,
+    txReceipt: { transactionHash: originTxHash },
+  });
+
+  return {
+    depositId,
+    originTxHash,
+  };
 }
 
 function getAcrossChains() {
   const resolveChain = (chainId: number) => {
     if (chainId === mainnet.id) return mainnet;
     if (chainId === base.id) return base;
+    if (chainId === polygon.id) return polygon;
     if (chainId === sepolia.id) return sepolia;
     if (chainId === baseSepolia.id) return baseSepolia;
+    if (chainId === polygonAmoy.id) return polygonAmoy;
     return undefined;
   };
 
   const ethereum = resolveChain(runtimeConfig.chains.ethereum.chainId);
   const baseChain = resolveChain(runtimeConfig.chains.base.chainId);
-  if (!ethereum || !baseChain) {
+  const polygonChain = resolveChain(runtimeConfig.chains.polygon.chainId);
+  if (!ethereum || !baseChain || !polygonChain) {
     throw new Error("Across client chain config is invalid");
   }
-  return [ethereum, baseChain];
+  return [ethereum, baseChain, polygonChain];
 }
 
 function getAcrossClient() {
@@ -202,16 +431,12 @@ export async function quoteAcrossBridge(input: BridgeQuoteInput) {
     throw new Error("Selected token is not bridgeable on source chain");
   }
 
-  const destinationToken = runtimeConfig.bridge.supportedAssets.find((asset) => {
-    if (asset.chain !== input.destinationChain) {
-      return false;
-    }
-    return asset.symbol === sourceToken.symbol;
-  });
-  const destinationTokenAddress =
-    destinationToken && destinationToken.address !== "native"
-      ? destinationToken.address.toLowerCase()
-      : undefined;
+  const destinationTokenAddresses = runtimeConfig.bridge.supportedAssets
+    .filter((asset) => asset.chain === input.destinationChain && asset.symbol === sourceToken.symbol)
+    .map((asset) => asset.address)
+    .filter((address): address is string => address !== "native")
+    .map((address) => address.toLowerCase());
+  const hasDestinationTokenFilter = destinationTokenAddresses.length > 0;
 
   const matchedRoute = availableRoutes.find((route: any) => {
     if (sourceToken.address === "native") {
@@ -219,8 +444,8 @@ export async function quoteAcrossBridge(input: BridgeQuoteInput) {
     }
     return (
       route.inputToken.toLowerCase() === sourceToken.address.toLowerCase() &&
-      destinationTokenAddress !== undefined &&
-      route.outputToken.toLowerCase() === destinationTokenAddress
+      (!hasDestinationTokenFilter ||
+        destinationTokenAddresses.includes(route.outputToken.toLowerCase()))
     );
   });
 
@@ -272,19 +497,58 @@ export async function executeAcrossBridge(
   const client = getAcrossClient();
   const walletClient = await createPrivyWalletClient(wallet, input.sourceChain);
   const sourcePublicClient = createChainPublicClient(input.sourceChain);
-  const sourceChain = sourcePublicClient.chain ?? walletClient.chain;
-  if (!sourceChain) {
-    throw new Error("Unable to resolve source chain for bridge transaction");
+  if (!walletClient.account) {
+    throw new Error("Privy wallet account is unavailable");
   }
+  const accountAddress = walletClient.account.address as `0x${string}`;
+  const nativeSymbol = sourcePublicClient.chain?.nativeCurrency.symbol ?? "native";
 
   let depositId: string | undefined;
   let originTxHash: `0x${string}` | undefined;
+  const provider = await wallet.getEthereumProvider();
+  let manualFirst = false;
+  try {
+    await provider.request({ method: "eth_maxPriorityFeePerGas" });
+  } catch (error) {
+    if (isMethodUnsupportedError(error, "eth_maxPriorityFeePerGas")) {
+      manualFirst = true;
+    }
+  }
+  try {
+    const nativeBalance = await sourcePublicClient.getBalance({
+      address: accountAddress,
+    });
+    if (nativeBalance === 0n) {
+      manualFirst = true;
+    }
+  } catch {
+    // Ignore balance precheck failures.
+  }
+
+  if (manualFirst) {
+    const manual = await executeAcrossDepositManually(
+      {
+        accountAddress,
+        client,
+        deposit: quote.deposit,
+        sourcePublicClient,
+        wallet,
+      },
+      onProgress,
+    );
+    return {
+      quote,
+      depositId: manual.depositId,
+      originTxHash: manual.originTxHash,
+    };
+  }
 
   try {
     await client.executeQuote({
       walletClient,
       deposit: quote.deposit,
       forceOriginChain: true,
+      infiniteApproval: true,
       onProgress: (progress: AcrossProgress) => {
         onProgress?.(progress);
 
@@ -300,92 +564,81 @@ export async function executeAcrossBridge(
     });
   } catch (error) {
     const message = getErrorMessage(error);
-    const rpcFailureMessage = normalizeRpcFailureMessage(message, input.sourceChain);
-    const shouldFallback =
-      message.includes("toLowerCase is not a function") ||
-      message.includes('contract function "deposit"') ||
-      message.includes("does not match 'originChainId'");
-    if (!shouldFallback) {
-      if (rpcFailureMessage) {
-        throw new Error(rpcFailureMessage);
-      }
-      throw error;
-    }
-
-    const deposit = quote.deposit;
-    if (!walletClient.account) {
-      throw new Error("Privy wallet account is unavailable");
-    }
-
-    try {
-      if (!deposit.isNative) {
-        const allowance = await sourcePublicClient.readContract({
-          address: deposit.inputToken,
-          abi: APPROVE_ABI,
-          functionName: "allowance",
-          args: [walletClient.account.address, deposit.spokePoolAddress],
-        });
-        if (allowance < deposit.inputAmount) {
-          const approveData = encodeFunctionData({
-            abi: APPROVE_ABI,
-            functionName: "approve",
-            args: [deposit.spokePoolAddress, deposit.inputAmount],
-          });
-          const approveHash = await sendTransactionViaProvider({
+    const useManualFallback = shouldUseManualWalletFallback(message);
+    if (useManualFallback) {
+      try {
+        const manual = await executeAcrossDepositManually(
+          {
+            accountAddress,
+            client,
+            deposit: quote.deposit,
+            sourcePublicClient,
             wallet,
-            to: deposit.inputToken,
-            data: approveData,
-          });
-          await sourcePublicClient.waitForTransactionReceipt({ hash: approveHash });
+          },
+          onProgress,
+        );
+        depositId = manual.depositId;
+        originTxHash = manual.originTxHash;
+        return {
+          quote,
+          depositId,
+          originTxHash,
+        };
+      } catch (manualError) {
+        const manualMessage = getErrorMessage(manualError);
+        if (isRpcMethodUnavailable(manualMessage)) {
+          throw new Error(
+            `Wallet RPC on ${input.sourceChain} does not support required transaction methods (eth_fillTransaction / eth_maxPriorityFeePerGas). In MetaMask, switch to a standard ${input.sourceChain} RPC endpoint and retry.`,
+          );
         }
+        if (normalizeGasAllowanceErrorMessage(manualMessage, input.sourceChain)) {
+          let nativeBalanceHint = "";
+          try {
+            const nativeBalance = await sourcePublicClient.getBalance({
+              address: accountAddress,
+            });
+            nativeBalanceHint = ` Current ${input.sourceChain} gas balance: ${formatNativeBalanceHint(nativeBalance, nativeSymbol)}.`;
+          } catch {
+            // Best effort only.
+          }
+          throw new Error(
+            `Insufficient ${nativeSymbol} for gas on ${input.sourceChain}.${nativeBalanceHint} Add native gas token and retry.`,
+          );
+        }
+        throw new Error(`Across bridge submission failed: ${manualMessage}`);
       }
-
-      const depositData = encodeFunctionData({
-        abi: DEPOSIT_ABI,
-        functionName: "deposit",
-        args: [
-          addressToBytes32(walletClient.account.address),
-          addressToBytes32(deposit.recipient),
-          addressToBytes32(deposit.inputToken),
-          addressToBytes32(deposit.outputToken),
-          deposit.inputAmount,
-          deposit.outputAmount,
-          BigInt(deposit.destinationChainId),
-          addressToBytes32(deposit.exclusiveRelayer),
-          deposit.quoteTimestamp,
-          deposit.fillDeadline,
-          deposit.exclusivityDeadline,
-          deposit.message,
-        ],
-      });
-      const dataSuffix = getIntegratorDataSuffix(env.acrossIntegratorId);
-      const bridgedData = dataSuffix ? concat([depositData, dataSuffix]) : depositData;
-      originTxHash = await sendTransactionViaProvider({
-        wallet,
-        to: deposit.spokePoolAddress,
-        data: bridgedData,
-        value: deposit.isNative ? deposit.inputAmount : 0n,
-      });
-
-      const depositStatus = await (client as any).waitForDepositTx({
-        originChainId: deposit.originChainId,
-        transactionHash: originTxHash,
-        publicClient: sourcePublicClient,
-      });
-      if (depositStatus?.depositId !== undefined) {
-        depositId = String(depositStatus.depositId);
-      }
-    } catch (manualFallbackError) {
-      const manualMessage = getErrorMessage(manualFallbackError);
-      const rpcFailureDuringFallback = normalizeRpcFailureMessage(
-        manualMessage,
-        input.sourceChain,
-      );
-      if (rpcFailureDuringFallback) {
-        throw new Error(rpcFailureDuringFallback);
-      }
-      throw new Error(`Across bridge submission failed: ${manualMessage}`);
     }
+    const rpcFailureMessage = normalizeRpcFailureMessage(message, input.sourceChain);
+    const gasFailureMessage = normalizeGasAllowanceErrorMessage(
+      message,
+      input.sourceChain,
+    );
+    if (rpcFailureMessage) {
+      throw new Error(rpcFailureMessage);
+    }
+    if (gasFailureMessage) {
+      let nativeBalanceHint = "";
+      try {
+        const nativeBalance = await sourcePublicClient.getBalance({
+          address: accountAddress,
+        });
+        nativeBalanceHint = ` Current ${input.sourceChain} gas balance: ${formatNativeBalanceHint(nativeBalance, nativeSymbol)}.`;
+      } catch {
+        // Best effort only.
+      }
+      if (message.toLowerCase().includes("gas required exceeds allowance")) {
+        throw new Error(
+          `Insufficient ${nativeSymbol} for gas on ${input.sourceChain}.${nativeBalanceHint} Add native gas token and retry.`,
+        );
+      }
+      throw new Error(`${gasFailureMessage}${nativeBalanceHint}`);
+    }
+    if (message.toLowerCase().includes("not enough input to decode")) {
+      throw new Error(
+        "Across bridge submission failed while encoding wallet transaction. Reconnect wallet and retry once.",
+      );
+    }
+    throw new Error(`Across bridge submission failed: ${message}`);
   }
 
   return {
